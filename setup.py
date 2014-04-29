@@ -41,6 +41,7 @@ requires = [
     ]
 tests_require = [
     'nose',
+    'tissue',
     ]
 if not PY33:
     tests_require.append('mock')
