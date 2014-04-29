@@ -4,5 +4,9 @@ python:
   - "3.3"
   - "3.4"
   - "pypy"
-install: "python setup.py install"
-script: nosetests
+install:
+    "pip install -e '.[coveralls]'"
+script:
+    "coverage run --branch --source=pgp nosetests"
+after_success:
+    "coveralls"
