@@ -35,6 +35,9 @@ requires = [
     'camcrypt',
     'twofish',
     'zope.interface',
+
+    # temporarily
+    'pgpdump',
     ]
 tests_require = [
     'nose',
