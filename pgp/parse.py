@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify
@@ -500,7 +500,7 @@ def parse_user_attribute_subpackets(p, parse_unknown=False):
                     #  if a specified encoding format value is not
                     #  recognized."
                     mime_type = magic.from_buffer(bytes(sub_data[16:1040]),
-                                                  mime=True)
+                                                  mime=True).decode('ascii')
                     yield {
                             'sub_type': sub_type,
                             'content_data': sub_data[16:],
@@ -510,7 +510,7 @@ def parse_user_attribute_subpackets(p, parse_unknown=False):
                 # If we want to parse unknown, non-image data
                 content_data = sub_data[header_length:]
                 mime_type = magic.from_buffer(bytes(content_data[:1024]),
-                                              mime=True)
+                                              mime=True).decode('ascii')
                 yield {
                        'sub_type': sub_type,
                        'content_data': content_data,

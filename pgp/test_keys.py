@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify
@@ -35,12 +35,12 @@ from pgp import utils
 
 
 TEST_ELG_K = bytes_to_long(
-    '+|\xb2\x9e\xd5\x83o\xd0\xa4.D\xbfy\x1d\xa6\xeax\xe7\x1b\xc1\x92\x81)w'
-    '\xf0\xa0 \x00\xdd7\xebH\r\xe2`G\x9d\x10Z\xb4*\xf3+w\x03\xa7\xa9tP\xaa'
-    '\xc7\x1f\x11\xc5\x1f5`\x80\xec\x9c\xbf\xfeg\xc8\xd7|4\xd3\xd3\xdb\n\xd5'
-    'J\xf7:\x8a\x99\x11\x9ciN\x8d\xbaV\xab\x9d\x8e;\xf4\xaa\xad\xd2\xd5H\xc1'
-    '\x91v\x0c\xe1\x10\x959\x00BD\xf6\xa4\x02\xa4\xbb-\xad+x\xa21\xc6\x82\xfe'
-    'sQ\xce\xbb\xe4W\x02\xea\xdd'
+    b'+|\xb2\x9e\xd5\x83o\xd0\xa4.D\xbfy\x1d\xa6\xeax\xe7\x1b\xc1\x92\x81)w'
+    b'\xf0\xa0 \x00\xdd7\xebH\r\xe2`G\x9d\x10Z\xb4*\xf3+w\x03\xa7\xa9tP\xaa'
+    b'\xc7\x1f\x11\xc5\x1f5`\x80\xec\x9c\xbf\xfeg\xc8\xd7|4\xd3\xd3\xdb\n\xd5'
+    b'J\xf7:\x8a\x99\x11\x9ciN\x8d\xbaV\xab\x9d\x8e;\xf4\xaa\xad\xd2\xd5H\xc1'
+    b'\x91v\x0c\xe1\x10\x959\x00BD\xf6\xa4\x02\xa4\xbb-\xad+x\xa21\xc6\x82'
+    b'\xfesQ\xce\xbb\xe4W\x02\xea\xdd'
     )
 """This is a precalculated value of K for ElGamal signing when we don't
 care about security - like in testing. Since the minimum ELG size is
@@ -175,8 +175,8 @@ def make_notation_subpacket(namespace, name, value, is_text, critical=False,
     name_with_namespace_bytes = name_with_namespace.encode('utf8')
     data.extend(utils.int_to_2byte(len(name_with_namespace_bytes)))
     data.extend(utils.int_to_2byte(len(value_bytes)))
-    data.extend(name_with_namespace_bytes)
-    data.extend(value_bytes)
+    data.extend(bytearray(name_with_namespace_bytes))
+    data.extend(bytearray(value_bytes))
     return make_signature_subpacket(20, data, critical, hashed)
 
 

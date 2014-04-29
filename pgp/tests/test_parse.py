@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify
@@ -104,7 +104,7 @@ class TestParseNotation(unittest.TestCase):
         """
 
         subpacket = test_keys.make_notation_subpacket(
-                u'pyks.org', u'Test Key', '\x00\x01\x02\x03\x04\x05', False,
+                u'pyks.org', u'Test Key', b'\x00\x01\x02\x03\x04\x05', False,
                 False, True
                 )
         result = parse.parse_notation(subpacket['data'],
@@ -112,7 +112,7 @@ class TestParseNotation(unittest.TestCase):
                                       encode_non_readable=lambda x: x[::-1])
         expected = {
             u'name': u'Test Key',
-            u'value': bytearray('\x05\x04\x03\x02\x01\x00'),
+            u'value': bytearray([0x05, 0x04, 0x03, 0x02, 0x01, 0x00]),
             u'namespace': u'pyks.org',
             u'hashed': True,
             u'human_readable': False,
@@ -470,7 +470,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
         self.assertEqual(signature, expected)
 
     def test_parse_issuer(self):
-        key_id = '0123456789ABCDEF'
+        key_id = b'0123456789ABCDEF'
         sub_data = test_keys.make_issuer_key_subpacket(key_id, False, True)
         sub = self.make_dummy_subpacket(sub_data)
         signature_owner_type = 6
@@ -480,7 +480,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
         self.assertEqual(signature, expected)
 
     def test_parse_issuer_not_hashed(self):
-        key_id = '0123456789ABCDEF'
+        key_id = b'0123456789ABCDEF'
         sub_data = test_keys.make_issuer_key_subpacket(key_id, False, False)
         sub = self.make_dummy_subpacket(sub_data)
         signature_owner_type = 6
@@ -490,7 +490,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
         self.assertEqual(signature, expected)
 
     def test_parse_issuer_appends(self):
-        key_id = '0123456789ABCDEF'
+        key_id = b'0123456789ABCDEF'
         sub_data = test_keys.make_issuer_key_subpacket(key_id, False, True)
         sub = self.make_dummy_subpacket(sub_data)
         signature_owner_type = 6
@@ -501,7 +501,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
         self.assertEqual(signature, expected)
 
     def test_parse_issuer_sig_hashed(self):
-        key_id = '0123456789ABCDEF'
+        key_id = b'0123456789ABCDEF'
         sub_data = test_keys.make_issuer_key_subpacket(key_id, False, False)
         sub = self.make_dummy_subpacket(sub_data)
         signature_owner_type = 6
@@ -1756,7 +1756,7 @@ class TestParseUserAttributeSubpackets(unittest.TestCase):
         expected = [
             {
             'sub_type': 1,
-            'content_data': image_data,
+            'content_data': bytearray(image_data),
             'mimetype': 'image/jpeg',
             }]
         self.assertEqual(result, expected)
@@ -1772,12 +1772,12 @@ class TestParseUserAttributeSubpackets(unittest.TestCase):
         expected = [
             {
             'sub_type': 1,
-            'content_data': image_data,
+            'content_data': bytearray(image_data),
             'mimetype': 'image/jpeg',
             },
             {
             'sub_type': 1,
-            'content_data': image_data,
+            'content_data': bytearray(image_data),
             'mimetype': 'image/jpeg',
             },
             ]
@@ -1859,7 +1859,7 @@ class TestParseUserAttributeSubpackets(unittest.TestCase):
         expected = [
             {
             'sub_type': 1,
-            'content_data': image_data,
+            'content_data': bytearray(image_data),
             'mimetype': 'image/png',
             },
             ]

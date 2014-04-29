@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify
@@ -80,7 +80,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
                 k = random.StrongRandom().randint(1, secret_key.p - 1)
                 if GCD(k, secret_key.p - 1) == 1:
                     break
-            print k
+            print (k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
                             hash_, secret_key.size())
@@ -122,7 +122,7 @@ def verify_hash(pub_algorithm_type, public_key, hash_, values):
         digest = hash_.digest()
         # Discard empty leading bytes
         start = 0
-        while digest[start] == '\x00':
+        while digest[start] == b'\x00':
             start += 1
         digest = digest[start:start + qbytes]
         return public_key.verify(bytes_to_long(digest), values)
@@ -222,7 +222,7 @@ def hash_key(hash_, key_packet_data):
     """Adds key data to a hash for signature comparison."""
 
     key_length = len(key_packet_data)
-    hash_.update('\x99')
+    hash_.update(b'\x99')
     hash_.update(int_to_2byte(key_length))
     hash_.update(key_packet_data)
 
@@ -240,12 +240,12 @@ def hash_user_data(hash_, target_type, target_packet_data, signature_version):
 
     if target_type == 13:
         if signature_version >= 4:
-            hash_.update(bytearray(['\xb4']))
+            hash_.update(bytearray([0xb4]))
             hash_.update(int_to_4byte(len(target_packet_data)))
         hash_.update(target_packet_data)
     elif target_type == 17:
         if signature_version >= 4:
-            hash_.update(bytearray(['\xd1']))
+            hash_.update(bytearray([0xd1]))
             hash_.update(int_to_4byte(len(target_packet_data)))
         hash_.update(target_packet_data)
 
@@ -277,7 +277,7 @@ def hash_packet_for_signature(public_key_packet_data, target_type,
         hash_.update(int_to_2byte(hashed_subpacket_length))
         hash_.update(hashed_subpacket_data)
         hash_.update(bytearray([signature_version]))
-        hash_.update(bytearray(['\xff']))
+        hash_.update(bytearray([255]))
         hash_.update(int_to_4byte(hashed_subpacket_length + 6))
 
     return hash_
@@ -411,7 +411,7 @@ def old_packet_length_to_bytes(data_length):
 
 def hex_to_bytes(hex_val, expected_length):
     result = bytearray([0] * expected_length)
-    for i in range(len(hex_val) / 2):
+    for i in range(int(len(hex_val) / 2)):
         idx = i * 2
         result.append(int(hex_val[idx:idx + 2], 16))
     return result[-expected_length:]
@@ -432,10 +432,10 @@ def bytearray_to_hex(arr, expected=None):
 
 
 def compare_packets(packet1, packet2):
-    c = cmp(packet1.raw, packet2.raw)
+    c = (packet1.raw > packet2.raw) - (packet1.raw < packet2.raw)
     if c:
         return c
-    return cmp(packet1.data, packet2.data)
+    return (packet1.data > packet2.data) - (packet1.data < packet2.data)
 
 
 def sort_key(packets):
