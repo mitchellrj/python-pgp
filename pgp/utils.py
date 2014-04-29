@@ -80,7 +80,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
                 k = random.StrongRandom().randint(1, secret_key.p - 1)
                 if GCD(k, secret_key.p - 1) == 1:
                     break
-            print (k)
+            print(k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
                             hash_, secret_key.size())

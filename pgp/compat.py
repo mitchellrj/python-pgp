@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify

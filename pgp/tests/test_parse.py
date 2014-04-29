@@ -323,7 +323,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
     def test_parse_regex_appends(self):
         sub_data = test_keys.make_regex_subpacket('(spam|ham)', False, True)
         sub = self.make_dummy_subpacket(sub_data)
-        signature = {'regexes': [{'regex': '[eggs]', 'hashed':True}]}
+        signature = {'regexes': [{'regex': '[eggs]', 'hashed': True}]}
         signature_owner_type = 6
         validate_regex = lambda x: None
         parse.parse_signature_subpacket(
@@ -332,7 +332,7 @@ class TestParseSignatureSubpacket(unittest.TestCase):
         expected = [
             {
             'regex': '[eggs]',
-            'hashed':True
+            'hashed': True
             },
             {
             'regex': '(spam|ham)',

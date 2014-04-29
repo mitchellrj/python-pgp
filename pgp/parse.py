@@ -345,13 +345,13 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
     elif sub.subtype in (0, 1, 8, 13, 14, 15, 17, 18, 19):
         # "An implementation SHOULD ignore any subpacket of a type that it
         #  does not recognize."
-        #raise ReservedSignatureSubpacket(sub.subtype)
+        # raise ReservedSignatureSubpacket(sub.subtype)
         if sub.critical:
             raise CannotParseCritical(sub.subtype)
     else:
         # "An implementation SHOULD ignore any subpacket of a type that it
         #  does not recognize."
-        #raise InvalidSignatureSubpacket(sub.subtype)
+        # raise InvalidSignatureSubpacket(sub.subtype)
         if sub.critical:
             raise CannotParseCritical(sub.subtype)
 
