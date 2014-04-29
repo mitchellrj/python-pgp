@@ -6,6 +6,6 @@ python:
 install:
     "pip install -e '.[coveralls]'"
 script:
-    "nosetests --with-coverage --cover-branches --cover-package=pgp"
+    "nosetests --with-coverage --cover-branches --cover-tests --cover-package=pgp"
 after_success:
     "coveralls"
