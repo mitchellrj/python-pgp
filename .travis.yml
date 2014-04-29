@@ -7,6 +7,6 @@ python:
 install:
     "pip install -e '.[coveralls]'"
 script:
-    "coverage run --branch --source=pgp nosetests"
+    "coverage run --branch --source=pgp nose"
 after_success:
     "coveralls"

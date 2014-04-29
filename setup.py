@@ -60,7 +60,8 @@ setup(
     tests_require=tests_require,
     test_suite='nose.collector',
     extras_require={
-        'coveralls': ['python-coveralls'],
+        'test': tests_require,
+        'coveralls': ['python-coveralls'] + tests_require,
     },
     entry_points="""
     """,
