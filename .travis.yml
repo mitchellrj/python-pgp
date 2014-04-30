@@ -4,7 +4,7 @@ python:
   - "3.3"
   - "pypy"
 install:
-    "pip install -e '.[coveralls]'"
+    "pip install -e '.[integration,camellia,twofish]'"
 script:
     "nosetests"
 after_success:

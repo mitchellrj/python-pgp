@@ -110,8 +110,11 @@ def encode_with_cipher(sym_algorithm_type, iv, secret, data):
     elif sym_algorithm_type in (7, 8, 9):
         cipher = AES.new(secret, mode=AES.MODE_OPENPGP, IV=iv)
         iv_length = 16
+    elif sym_algorithm_type == 10:
+        cipher = twofish.new(secret, mode=twofish.MODE_OPENPGP, IV=iv)
+    elif sym_algorithm_type in (11, 12, 13):
+        cipher = camellia.new(secret, mode=camellia.MODE_OPENPGP, IV=iv)
     else:
-        # TODO: Add twofish & camellia
         raise NotImplemented
 
     if len(iv) != iv_length:

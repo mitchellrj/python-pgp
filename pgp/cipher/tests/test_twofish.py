@@ -15,6 +15,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import unittest
+import warnings
+
+from Crypto.SelfTest.Cipher.common import make_block_tests
+
+from pgp.cipher import twofish
+
+
 # This is a list of (plaintext, ciphertext, key) tuples.
 test_data = [
     # Test vectors from Schneier
@@ -122,11 +130,22 @@ test_data = [
 
 
 def get_tests(config={}):
-    from pgp.cipher import twofish
-    from Crypto.SelfTest.Cipher.common import make_block_tests
     return make_block_tests(twofish, "Twofish", test_data)
 
 
 def test_twofish():
+    if twofish is None:
+        warnings.warn(
+            "Twofish not available on this system. Skipping its tests."
+            )
+        return
     for testcase in get_tests():
         yield testcase
+
+
+if hasattr(unittest, 'skip'):
+    # Python >= 3.1
+    test_camellia = unittest.skipIf(
+                        twofish is None,
+                        "Twofish not available on this system."
+                    )(test_twofish)

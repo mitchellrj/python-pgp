@@ -8,12 +8,36 @@ System requirements
 ===================
 
 * build-essential
+
+For Twofish support
+-------------------
+
 * libtwofish-dev
 
 Recommended
 -----------
 
 * libgmp10-dev (for fastmath extension of pycrypto)
+
+Installation
+============
+::
+
+    pip install pgp
+
+with Twofish support::
+
+    pip install pgp[twofish]
+
+with Camellia support::
+
+    pip install pgp[camellia]
+
+
+with Twofish & Camellia support::
+
+    pip install pgp[camellia,twofish]
+
 
 Development
 ===========

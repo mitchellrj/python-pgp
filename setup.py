@@ -1,4 +1,4 @@
-# python-pgp A Python OpenPGP implementation                                                                         
+# python-pgp A Python OpenPGP implementation
 # Copyright (C) 2014 Richard Mitchell
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,8 +32,6 @@ long_description = '\n\n'.join([open(f).read() for f in [
 requires = [
     'python-magic',
     'pycrypto',
-    'camcrypt',
-    'twofish',
     'zope.interface',
 
     # temporarily
@@ -68,10 +66,15 @@ setup(
     tests_require=tests_require,
     test_suite='nose.collector',
     extras_require={
+        # Optional algorithm support
+        'camellia': ['camcrypt'],
+        'twofish': ['twofish'],
+
+        # Environment shortcuts
         'dev': docs_require + tests_require,
         'docs': docs_require,
         'test': tests_require,
-        'coveralls': ['python-coveralls'] + tests_require,
+        'integration': ['python-coveralls'] + tests_require,
     },
     entry_points="""
     """,

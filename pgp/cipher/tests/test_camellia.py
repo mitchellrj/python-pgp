@@ -15,6 +15,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import unittest
+import warnings
+
+from Crypto.SelfTest.Cipher.common import make_block_tests
+
+from pgp.cipher import camellia
+
+
 # This is a list of (plaintext, ciphertext, key) tuples.
 test_data = [
     # Test vectors from RFC 3713, A
@@ -313,11 +321,23 @@ test_data = [
 
 
 def get_tests(config={}):
-    from pgp.cipher import camellia
-    from Crypto.SelfTest.Cipher.common import make_block_tests
     return make_block_tests(camellia, "Camellia", test_data)
 
 
 def test_camellia():
+    if camellia is None:
+        warnings.warn(
+            "Camellia not available on this system. Skipping its tests."
+            )
+        return
+
     for testcase in get_tests():
         yield testcase
+
+
+if hasattr(unittest, 'skip'):
+    # Python >= 3.1
+    test_camellia = unittest.skipIf(
+                        camellia is None,
+                        "Camellia not available on this system."
+                    )(test_camellia)
