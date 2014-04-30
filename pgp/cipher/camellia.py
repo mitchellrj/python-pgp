@@ -28,8 +28,9 @@ __all__ = [
 
 class _CamelliaObj(_InternalObj):
 
-    def _create_impl(self, key):
-        impl = camcrypt.CamCrypt(key)
+    @classmethod
+    def _create_impl(cls, key):
+        impl = camcrypt.CamCrypt()
         impl.keygen(len(key) * 8, bytes(key))
         return impl
 
@@ -41,7 +42,7 @@ class _CamelliaObj(_InternalObj):
 class CamelliaCipher(blockalgo.BlockAlgo):
 
     def __init__(self, key, *args, **kwargs):
-        blockalgo.BlockAlgo.__init__(self, key, *args, **kwargs)
+        blockalgo.BlockAlgo.__init__(self, _CamelliaObj, key, *args, **kwargs)
 
 
 def new(key, *args, **kwargs):

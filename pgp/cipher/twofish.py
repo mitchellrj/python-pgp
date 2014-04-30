@@ -14,8 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import absolute_import
+
 from Crypto.Cipher import blockalgo
-import twofish
+import twofish as twofish_impl
 
 from pgp.cipher.base import _InternalObj
 
@@ -28,8 +30,9 @@ __all__ = [
 
 class _TwofishObj(_InternalObj):
 
-    def _create_impl(self, key):
-        return twofish.Twofish(bytes(key))
+    @classmethod
+    def _create_impl(cls, key):
+        return twofish_impl.Twofish(bytes(key))
 
     block_size = 16
     key_size = (16, 24, 32)
@@ -39,7 +42,7 @@ class _TwofishObj(_InternalObj):
 class TwofishCipher(blockalgo.BlockAlgo):
 
     def __init__(self, key, *args, **kwargs):
-        blockalgo.BlockAlgo.__init__(self, key, *args, **kwargs)
+        blockalgo.BlockAlgo.__init__(self, _TwofishObj, key, *args, **kwargs)
 
 
 def new(key, *args, **kwargs):
