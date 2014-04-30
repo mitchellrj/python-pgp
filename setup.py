@@ -43,6 +43,9 @@ tests_require = [
     'nose',
     'tissue',
     ]
+docs_require = [
+    'Sphinx',
+]
 if not PY33:
     tests_require.append('mock')
 
@@ -64,6 +67,8 @@ setup(
     tests_require=tests_require,
     test_suite='nose.collector',
     extras_require={
+        'dev': docs_require + tests_require,
+        'docs': docs_require,
         'test': tests_require,
         'coveralls': ['python-coveralls'] + tests_require,
     },
