@@ -2,7 +2,10 @@ language: python
 python:
   - "2.7"
   - "3.3"
+  - "3.4"
   - "pypy"
+before_install:
+    'if [[ "$TRAVIS_PYTHON_VERSION" == "3.4" ]]; then sudo apt-get install python3.4-dev; fi'
 install:
     "pip install -e '.[integration,camellia,twofish]'"
 script:
