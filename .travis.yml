@@ -5,7 +5,12 @@ python:
   - "3.4"
   - "pypy"
 before_install:
-    'if [[ "$TRAVIS_PYTHON_VERSION" == "3.4" ]]; then sudo sudo add-apt-repository ppa:fkrull/deadsnakes; sudo apt-get update; sudo apt-get install python3.4-dev; fi'
+    >
+      if [[ "$TRAVIS_PYTHON_VERSION" == "3.4" ]]; then
+      sudo add-apt-repository -y ppa:fkrull/deadsnakes;
+      sudo apt-get update;
+      sudo apt-get install python3.4-dev;
+      fi
 install:
     "pip install -e '.[integration,camellia,twofish]'"
 script:
