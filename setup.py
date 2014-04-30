@@ -40,6 +40,7 @@ requires = [
     'pgpdump',
     ]
 tests_require = [
+    'coverage',
     'nose',
     'tissue',
     ]
