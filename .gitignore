@@ -4,5 +4,7 @@ build
 dist
 include
 lib
+lib64
 local
 man
+pyvenv.cfg
