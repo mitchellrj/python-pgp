@@ -14,3 +14,23 @@ Recommended
 -----------
 
 * libgmp10-dev (for fastmath extension of pycrypto)
+
+Development
+===========
+
+To install development dependencies, install the 'dev' extras.::
+
+    pip install -e ".[dev]"
+
+Running tests
+-------------
+::
+
+    python setup.py nosetests
+
+Building documentation
+----------------------
+::
+
+    python setup.py build_sphinx
+
