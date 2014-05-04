@@ -35,6 +35,33 @@ from pgp.exceptions import UnsupportedDigestAlgorithm
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
 
 
+hash_lengths = {
+    1: 16,  # MD5
+    2: 20,  # SHA1
+    3: 20,  # RIPE-MD/160
+    8: 32,  # SHA256
+    9: 48,  # SHA384
+    10: 64,  # SHA512
+    11: 28,  # SHA224
+    }
+
+
+symmetric_cipher_block_lengths = {
+    0: 0,  # Plaintext
+    1: 8,  # IDEA
+    2: 8,  # Triple-DES
+    3: 8,  # CAST5
+    4: 8,  # Blowfish
+    7: 16,  # AES-128
+    8: 16,  # AES-192
+    9: 16,  # AES-256
+    10: 16,  # Twofish-256
+    11: 16,  # Camellia-128
+    12: 16,  # Camellia-192
+    13: 16,  # Camellia-256
+    }
+
+
 armored_key_format = u"""
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 Version: {version}
@@ -324,6 +351,13 @@ def int_to_8byte(i):
         ])
 
 
+EXPBIAS = 6
+
+
+def s2k_count_to_int(byte, offset=0):
+    return (16 + (byte & 15)) << ((byte >> 4) + EXPBIAS)
+
+
 def int_to_s2k_count(i):
     if i < 1024:
         raise ValueError(i)
@@ -333,7 +367,7 @@ def int_to_s2k_count(i):
     if i & ((1 << shift) - 1):
         raise ValueError(i)
     bits = (i >> shift) & 15
-    return ((shift - 6) << 4) + bits
+    return ((shift - EXPBIAS) << 4) + bits
 
 
 def int_to_mpi(i):
