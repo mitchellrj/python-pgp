@@ -16,11 +16,6 @@
 
 import warnings
 
-from pgpdump.packet import new_tag_length
-from pgpdump.utils import get_hex_data
-from pgpdump.utils import get_int2
-from pgpdump.utils import get_int4
-
 from pgp import utils
 from pgp.packets import constants
 
@@ -57,7 +52,7 @@ class CreationTimeSubpacket(SignatureSubpacket):
     @classmethod
     def from_subpacket_content(cls, type_, critical, sub_data):
         assert len(sub_data) == 4
-        time = get_int4(sub_data, 0)
+        time = utils.long_to_int(sub_data, 0)
         return cls(critical, time)
 
     def __init__(self, critical, time):
@@ -182,7 +177,7 @@ class AdditionalRecipientRequestSubpacket(SignatureSubpacket):
     def from_subpacket_content(cls, type_, critical, sub_data):
         strong_request = bool(sub_data[0] & 0x80)
         public_key_algorithm = sub_data[1]
-        fingerprint = get_hex_data(sub_data, 2, 20)
+        fingerprint = utils.bytearray_to_hex(sub_data, 2, 20)
         return cls(critical, strong_request, public_key_algorithm,
                    fingerprint)
 
@@ -237,7 +232,7 @@ class RevocationKeySubpacket(SignatureSubpacket):
         assert tag & 0x80
         sensitive = bool(tag & 0x40)
         public_key_algorithm = int(sub_data[1])
-        fingerprint = bytearray(get_hex_data(sub_data, 2, 20))
+        fingerprint = utils.bytearray_to_hex(sub_data, 2, 20)
         return cls(critical, fingerprint, public_key_algorithm,
                    sensitive=sensitive)
 
@@ -246,7 +241,7 @@ class RevocationKeySubpacket(SignatureSubpacket):
 
         if isinstance(fingerprint, (bytes, bytearray)):
             assert len(fingerprint) == 20
-            fingerprint = bytearray(get_hex_data(fingerprint, 0, 20))
+            fingerprint = utils.bytearray_to_hex(fingerprint, 0, 20)
         else:
             assert len(fingerprint) == 40
         SignatureSubpacket.__init__(
@@ -270,7 +265,7 @@ class IssuerSubpacket(SignatureSubpacket):
     @classmethod
     def from_subpacket_content(cls, type_, critical, sub_data):
         assert len(sub_data) == 8
-        key_id = get_hex_data(sub_data, 0, 8)
+        key_id = utils.bytearray_to_hex(sub_data, 0, 8)
         return cls(critical, key_id)
 
     def __init__(self, critical, key_id):
@@ -297,9 +292,9 @@ class NotationSubpacket(SignatureSubpacket):
         assert not any(flags[1:])
         assert not flags[0] & 0x7f
         human_readable = 0x80
-        name_length = get_int2(sub_data, offset)
+        name_length = utils.short_to_int(sub_data, offset)
         offset += 2
-        value_length = get_int2(sub_data, offset)
+        value_length = utils.short_to_int(sub_data, offset)
         offset += 2
         raw_name = sub_data[offset:offset + name_length]
         offset += name_length
@@ -542,7 +537,7 @@ class TargetSubpacket(SignatureSubpacket):
             hash_length = len(sub_data) - 2
         else:
             assert hash_length == len(sub_data) - 2
-        hash_ = get_hex_data(sub_data, 2, len(sub_data) - 2)
+        hash_ = utils.bytearray_to_hex(sub_data, 2, len(sub_data) - 2)
         return cls(critical, public_key_algorithm, hash_algorithm, hash_,
                    hash_length=hash_length)
 
@@ -633,8 +628,7 @@ SIGNATURE_SUBPACKET_TYPES = {
 
 
 def signature_subpacket_from_data(data, offset=0):
-    len_offset, length, partial = new_tag_length(data, offset)
-    offset += len_offset
+    offset, length, partial = utils.new_packet_length(data, offset)
     # TODO: smarter error
     assert not partial
     tag = data[offset]

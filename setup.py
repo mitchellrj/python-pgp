@@ -33,9 +33,6 @@ requires = [
     'python-magic',
     'pycrypto',
     'zope.interface',
-
-    # temporarily
-    'pgpdump',
     ]
 tests_require = [
     'coverage',

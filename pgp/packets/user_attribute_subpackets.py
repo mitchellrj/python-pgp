@@ -14,8 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from pgpdump.packet import new_tag_length
-
 from pgp.packets import constants
 from pgp import utils
 
@@ -104,16 +102,16 @@ USER_ATTRIBUTE_SUBPACKET_TYPES = {
 
 def user_attribute_subpacket_from_data(data, offset=0):
     sub_data = bytearray()
-    sub_offset, sub_len, sub_partial = new_tag_length(data, offset)
+    offset, sub_len, sub_partial = utils.new_packet_length(data, offset)
     if sub_partial:
         # "An implementation MAY use Partial Body Lengths for data
         #  packets, be they literal, compressed, or encrypted.  [...]
         #  Partial Body Lengths MUST NOT be used for any other packet
         #  types."
         raise ValueError
-    sub_type = int(data[sub_offset])
+    sub_type = int(data[offset])
     # + 1 for sub type
-    sub_data_start = offset + sub_offset + 1
+    sub_data_start = offset + 1
     sub_data_end = sub_data_start + sub_len - 1
     sub_data.extend(data[sub_data_start:sub_data_end])
     offset = sub_data_end

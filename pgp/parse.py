@@ -15,15 +15,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from base64 import b64encode
-import traceback
 import sys
 
 import magic
-import pgpdump
-from pgpdump.packet import new_tag_length
-from pgpdump.utils import get_int2
-from pgpdump.utils import get_int4
-from pgpdump.utils import get_key_id
 
 from pgp.exceptions import CannotParseCritical
 from pgp.exceptions import CannotParseCriticalNotation
@@ -34,9 +28,7 @@ from pgp.exceptions import RegexValueError
 from pgp.exceptions import UnsupportedPacketType
 from pgp.exceptions import UnsupportedSignatureVersion
 from pgp.regex import validate_subpacket_regex
-from pgp.utils import bytearray_to_hex
-from pgp.utils import get_bitlen
-from pgp.utils import hash_key_data
+from pgp import utils
 
 
 _marker = object()
@@ -70,10 +62,10 @@ def subpacket_type_to_keys(type_):
 
 
 def parse_notation(data, hashed, encode_non_readable=b64encode):
-    flags = get_int4(data, 0)
+    flags = utils.long_to_int(data, 0)
 
-    notation_name_length = get_int2(data, 4)
-    notation_value_length = get_int2(data, 6)
+    notation_name_length = utils.short_to_int(data, 4)
+    notation_value_length = utils.short_to_int(data, 6)
     name_end = 8 + notation_name_length
     value_end = name_end + notation_value_length
 
@@ -129,12 +121,12 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
             # is present in the unhashed area. GnuPG & SKS ignore the
             # signature subpacket.
             return
-        signature['creation_time'] = get_int4(sub.data, 0)
+        signature['creation_time'] = utils.long_to_int(sub.data, 0)
     elif sub.subtype == 3:
         # Raw expiration time is actually the time from the creation time
         # that expiration occurs in seconds, rather than a unix timestamp
         # as its name might imply
-        exp_time = get_int4(sub.data, 0)
+        exp_time = utils.long_to_int(sub.data, 0)
         if exp_time != 0:
             signature['expiration_seconds'] = exp_time
     elif sub.subtype == 4:
@@ -192,7 +184,7 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
         # Raw expiration time is actually the time from the creation time
         # that expiration occurs in seconds, rather than a unix timestamp
         # as its name might imply
-        exp_time = get_int4(sub.data, 0)
+        exp_time = utils.long_to_int(sub.data, 0)
         if exp_time == 0:
             return
         signature['key_expiration_seconds'] = exp_time
@@ -217,7 +209,7 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
         signature['revocation_key_sensitive'] = bool(sub.data[0] & 0x40)
         signature['revocation_key_pub_algorithm_type'] = sub.data[1]
         signature['revocation_key'] = \
-            bytearray_to_hex(sub.data[2:])
+            utils.bytearray_to_hex(sub.data[2:])
     elif sub.subtype == 16:
         # "Some apparent conflicts may actually make sense -- for example,
         #  suppose a keyholder has a V3 key and a V4 key that share the
@@ -227,7 +219,7 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
         #  of explicitly tying those keys to the signature."
         signature.setdefault('key_ids', [])
         signature['key_ids'].append({
-                'key_id': get_key_id(sub.data, 0).upper(),
+                'key_id': utils.bytearray_to_hex(sub.data, 0, 8).upper(),
                 'hashed': signature_hashed or sub.hashed
                 })
     elif sub.subtype == 20:
@@ -326,7 +318,7 @@ def parse_signature_subpacket(sub, signature, signature_owner_type,
         signature['target_pub_key_algorithm'] = sub.data[0]
         signature['target_hash_algorithm'] = sub.data[1]
         # Store the target hash as hex
-        signature['target_hash'] = bytearray_to_hex(sub.data[2:])
+        signature['target_hash'] = utils.bytearray_to_hex(sub.data[2:])
     elif sub.subtype == 32:
         subsignature = parse_embedded_signature(
                             sub.data, signature_hashed or sub.hashed)
@@ -372,7 +364,7 @@ def parse_signature_packet(p, parent_type, parent_key_ids=None,
     signature['pub_algorithm_type'] = p.raw_pub_algorithm
     signature['sig_type'] = p.raw_sig_type
     signature['sig_version'] = p.sig_version
-    signature['hash2'] = bytearray_to_hex(p.hash2)
+    signature['hash2'] = utils.bytearray_to_hex(p.hash2)
 
     # "If a subpacket is not hashed, then the information in it cannot be
     #  considered definitive because it is not part of the signature proper."
@@ -457,7 +449,8 @@ def parse_user_attribute_subpackets(p, parse_unknown=False):
     while offset < len(p.data):
         sub_data = bytearray()
         sub_type = None
-        sub_offset, sub_len, sub_partial = new_tag_length(p.data, offset)
+        sub_offset, sub_len, sub_partial = \
+            utils.new_packet_length(p.data, offset)
         if sub_partial:
             # "An implementation MAY use Partial Body Lengths for data
             #  packets, be they literal, compressed, or encrypted.  [...]
@@ -520,7 +513,7 @@ def parse_user_attribute_subpackets(p, parse_unknown=False):
 
 def parse_key(packets,
               # For testing
-              hash_key_data=hash_key_data,
+              hash_key_data=utils.hash_key_data,
               parse_signature_packet=parse_signature_packet,
               parse_user_attribute_subpackets=parse_user_attribute_subpackets,
               ):
@@ -565,7 +558,7 @@ def parse_key(packets,
             public_key['group_gen'] = p.group_gen
             public_key['key_value'] = p.key_value
 
-            public_key['bitlen'] = get_bitlen(public_key)
+            public_key['bitlen'] = utils.get_bitlen(public_key)
 
             public_key['_data'] = p.original_data
             signable = public_key
@@ -595,7 +588,7 @@ def parse_key(packets,
             subkey_params['group_order'] = p.group_order
             subkey_params['group_gen'] = p.group_gen
             subkey_params['key_value'] = p.key_value
-            subkey_params['bitlen'] = get_bitlen(subkey_params)
+            subkey_params['bitlen'] = utils.get_bitlen(subkey_params)
             public_key.setdefault('subkeys', [])
             public_key['subkeys'].append(subkey_params)
             signable = subkey_params

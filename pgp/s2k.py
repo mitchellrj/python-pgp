@@ -1,5 +1,3 @@
-from pgpdump.utils import get_hex_data
-
 from pgp import utils
 
 
@@ -141,8 +139,7 @@ class GnuPGS2K(SimpleS2K):
                         "Unexpected serial number length: %d" %
                         serial_len)
 
-            serial_number = get_hex_data(data, offset,
-                    serial_len)
+            serial_number = utils.bytearray_to_hex(data, offset, serial_len)
             offset += serial_len
         else:
             raise ValueError(

@@ -17,13 +17,6 @@
 import os
 import warnings
 
-from pgpdump.packet import new_tag_length
-from pgpdump.packet import old_tag_length
-from pgpdump.utils import get_int2
-from pgpdump.utils import get_int4
-from pgpdump.utils import get_key_id
-from pgpdump.utils import get_mpi
-
 from pgp.packets import constants
 from pgp.packets.signature_subpackets import signature_subpacket_from_data
 from pgp.packets.user_attribute_subpackets import \
@@ -94,15 +87,14 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         offset = 0
         version = int(data[offset])
         offset += 1
-        key_id = get_key_id(data, offset)
+        key_id = utils.bytearray_to_hex(data, offset, 8)
         offset += 8
         public_key_algorithm = int(data[offset])
         offset += 1
         data_len = len(data)
         session_key_values = []
         while offset < data_len:
-            mpi, o = get_mpi(data, offset)
-            offset += o
+            mpi, offset = utils.mpi_to_int(data, offset)
             session_key_values.append(mpi)
         return cls(header_format, version, key_id, public_key_algorithm,
                    session_key_values)
@@ -156,10 +148,10 @@ class SignaturePacket(Packet):
             signature_type = data[offset]
             offset += 1
 
-            creation_time = get_int4(data, offset)
+            creation_time = utils.long_to_int(data, offset)
             offset += 4
 
-            key_id = get_key_id(data, offset)
+            key_id = utils.bytearray_to_hex(data, offset, 8)
             offset += 8
 
             public_key_algorithm = data[offset]
@@ -189,7 +181,7 @@ class SignaturePacket(Packet):
             offset += 1
 
             # next is hashed subpackets
-            length = get_int2(data, offset)
+            length = utils.short_to_int(data, offset)
             offset += 2
             subpacket_end = offset + length
             hashed_subpackets = []
@@ -199,7 +191,7 @@ class SignaturePacket(Packet):
                 hashed_subpackets.append(hashed_subpacket)
 
             # followed by subpackets
-            length = get_int2(data, offset)
+            length = utils.short_to_int(data, offset)
             offset += 2
             subpacket_end = offset + length
             unhashed_subpackets = []
@@ -218,8 +210,7 @@ class SignaturePacket(Packet):
         signature_values = []
         data_len = len(data)
         while offset < data_len:
-            mpi, o = get_mpi(data, offset)
-            offset += o
+            mpi, offset = utils.mpi_to_int(data, offset)
             signature_values.append(mpi)
 
         return cls(header_format, version, signature_type,
@@ -344,7 +335,7 @@ class OnePassSignaturePacket(Packet):
         offset += 1
         public_key_algorithm = int(data[offset])
         offset += 1
-        key_id = get_key_id(data, offset)
+        key_id = utils.bytearray_to_hex(data, offset, 8)
         offset += 8
         nested = data[offset]
         offset += 1
@@ -381,11 +372,11 @@ class PublicKeyPacket(Packet):
         offset = 0
         version = int(data[offset])
         offset += 1
-        creation_time = get_int4(data, offset)
+        creation_time = utils.long_to_int(data, offset)
         offset += 4
 
         if version in (2, 3):
-            expiration_days = get_int2(data, offset)
+            expiration_days = utils.short_to_int(data, offset)
             offset += 2
         elif version >= 4:
             expiration_days = None
@@ -401,17 +392,17 @@ class PublicKeyPacket(Packet):
         group_order = None
         key_value = None
         if public_key_algorithm in (1, 2, 3):
-            modulus, offset = get_mpi(data, offset)
-            exponent, offset = get_mpi(data, offset)
+            modulus, offset = utils.mpi_to_int(data, offset)
+            exponent, offset = utils.mpi_to_int(data, offset)
         elif public_key_algorithm in (16, 20):
-            prime, offset = get_mpi(data, offset)
-            group_gen, offset = get_mpi(data, offset)
-            key_value, offset = get_mpi(data, offset)
+            prime, offset = utils.mpi_to_int(data, offset)
+            group_gen, offset = utils.mpi_to_int(data, offset)
+            key_value, offset = utils.mpi_to_int(data, offset)
         elif public_key_algorithm == 17:
-            prime, offset = get_mpi(data, offset)
-            group_order, offset = get_mpi(data, offset)
-            group_gen, offset = get_mpi(data, offset)
-            key_value, offset = get_mpi(data, offset)
+            prime, offset = utils.mpi_to_int(data, offset)
+            group_order, offset = utils.mpi_to_int(data, offset)
+            group_gen, offset = utils.mpi_to_int(data, offset)
+            key_value, offset = utils.mpi_to_int(data, offset)
         else:
             raise NotImplemented
 
@@ -669,7 +660,7 @@ class LiteralDataPacket(Packet):
         #  UTF-8"
         filename = filename.decode('utf8', 'replace')
         offset += filename_length
-        time = get_int4(data, offset)
+        time = utils.long_to_int(data, offset)
         offset += 4
         content = data[offset:]
         encoding = None
@@ -932,7 +923,7 @@ PACKET_TYPES = {
     }
 
 
-def from_packet_data(data, offset=0):
+def packet_from_packet_data(data, offset=0):
     """Parse a packet from the given data starting at the offset
     and return a tuple of the length of data consumed and a packet
     object.
@@ -960,15 +951,12 @@ def from_packet_data(data, offset=0):
                 raise ValueError()
         if header_type == constants.NEW_PACKET_HEADER_TYPE:
             offset += 1
-            data_offset, data_length, incomplete = new_tag_length(
+            offset, data_length, incomplete = utils.new_packet_length(
                     data, offset)
         else:
             tag >>= 2
-            data_offset, data_length = old_tag_length(data, offset)
-            # TODO: factor this into new implementation of old_tag_length
-            offset += 1  # For the tag
+            offset, data_length = utils.old_packet_length(data, offset)
             incomplete = False
-        offset += data_offset
 
         packet_data.extend(data[offset:offset + data_length])
         offset += data_length

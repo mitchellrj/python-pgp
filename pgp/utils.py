@@ -14,11 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from base64 import b64encode
 import hashlib
 import math
-
-from pgpdump.utils import crc24
 
 from Crypto import Hash
 from Crypto import PublicKey
@@ -27,12 +24,11 @@ from Crypto.Signature import PKCS1_v1_5
 from Crypto.Util.number import bytes_to_long
 from Crypto.Util.number import GCD
 from Crypto.Util.number import long_to_bytes
-from pgpdump.utils import get_int2
-from pgpdump.utils import get_mpi
 
 from pgp.exceptions import PublicKeyAlgorithmCannotSign
 from pgp.exceptions import UnsupportedDigestAlgorithm
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
+from pgp import utils
 
 
 hash_lengths = {
@@ -60,37 +56,6 @@ symmetric_cipher_block_lengths = {
     12: 16,  # Camellia-192
     13: 16,  # Camellia-256
     }
-
-
-armored_key_format = u"""
------BEGIN PGP PUBLIC KEY BLOCK-----
-Version: {version}
-Charset: ascii-us
-
-{data}
-={checksum}
------END PGP PUBLIC KEY BLOCK-----
-"""
-
-
-def bytes_to_armor(byte_data, version_string=None, comment=None):
-    encoded_data = b64encode(byte_data)
-    data_lines = []
-    for l in range(int(math.ceil(len(encoded_data) / 72.0))):
-        data_lines.append(encoded_data[l * 72:(l * 72) + 72])
-    formatted_data = u'\n'.join(data_lines)
-    checksum_value = crc24(byte_data)
-    checksum = bytearray([
-            (checksum_value >> (i * 8)) & 0xff
-            for i in (2, 1, 0)
-            ])
-    checksum = b64encode(checksum)
-
-    return armored_key_format.strip().format(
-        version=version_string,
-        data=formatted_data,
-        checksum=checksum
-        )
 
 
 def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
@@ -310,6 +275,47 @@ def hash_packet_for_signature(public_key_packet_data, target_type,
     return hash_
 
 
+def bytes_to_int(bytes_, offset, length):
+    result = 0
+    for i in range(length):
+        result += (bytes_[offset + i] << (8 * i)) & 0xff
+    return result
+
+
+def byte_to_int(bytes_, offset):
+    return bytes_to_int(bytes_, offset, 1)
+
+
+def short_to_int(bytes_, offset):
+    return bytes_to_int(bytes_, offset, 2)
+
+
+def long_to_int(bytes_, offset):
+    return bytes_to_int(bytes_, offset, 4)
+
+
+def mpi_to_int(bytes_, offset):
+    mpi_bit_length = short_to_int(bytes_, offset)
+    offset += 2
+    mpi_byte_length = int(math.ceil(mpi_bit_length / 8.0))
+    result = 0
+    for i in range(mpi_byte_length):
+        shift = (mpi_byte_length - i) * 8
+        result += (bytes_[offset + i] << shift) & 0xff
+
+    return result, offset
+
+
+def int_to_bytes(i):
+    bits_required = int(math.floor(float(math.log(i, 2)))) + 1
+    bytes_required = int(math.ceil(bits_required / 8.0))
+    result = bytearray(
+        [(i >> (j * 8)) & 0xff
+         for j in range(bytes_required, 0, -1)
+         ])
+    return result
+
+
 def int_to_2byte(i):
     """Given an integer, return a bytearray of its short, unsigned
     representation, big-endian.
@@ -386,6 +392,42 @@ def int_to_mpi(i):
 MAX_PACKET_LENGTH = 4294967295
 
 
+def old_packet_length(data, offset):
+    length_type = int(data[offset]) & 0x03
+    offset += 1
+    if length_type == 0:
+        length = int(data[offset])
+        offset += 1
+    elif length_type == 1:
+        length = short_to_int(data, offset)
+        offset += 2
+    elif length_type == 2:
+        length = long_to_int(data, offset)
+        offset += 4
+    else:
+        # with & 3 and the other cases, this has to be 3.
+        length = len(data) - offset
+    return offset, length
+
+
+def new_packet_length(data, offset):
+    length = int(data[offset])
+    partial = False
+    offset += 1
+    if length < 192:
+        pass
+    elif length < 224:
+        length = ((length - 192) << 8) + data[offset] + 192
+        offset += 1
+    elif length == 255:
+        length = long_to_int(data, offset)
+        offset += 4
+    else:
+        partial = True
+        length = 1 << (length & 0x1f)
+    return offset, length, partial
+
+
 def new_packet_length_to_bytes(data_length, allow_partial):
     result = bytearray()
     remaining = 0
@@ -451,12 +493,17 @@ def hex_to_bytes(hex_val, expected_length):
     return result[-expected_length:]
 
 
-def bytearray_to_hex(arr, expected=None):
-    result = ''.join(list(map(
-                    lambda i: '{:02x}'.format(i),
-                    arr)
-                )
-            ).upper()
+def bytearray_to_hex(arr, offset=0, expected=None):
+    result = ''
+    i = offset
+    assert not expected % 2, "Must expect an even number of hex digits."
+    if expected is not None:
+        end = offset + (expected / 2)
+    else:
+        end = len(arr)
+    while i < end:
+        result += '{:02x}'.format(arr[i]).upper()
+        i += 1
     if expected is not None:
         if len(result) < expected:
             result = ('0' * len(result) - expected) + result
@@ -521,12 +568,12 @@ def get_signature_values(signature_packet_data):
         offset += 1  # hash algorithm
 
         # hashed subpackets
-        length = get_int2(data, offset)
+        length = short_to_int(data, offset)
         offset += 2
         offset += length
 
         # unhashed subpackets
-        length = get_int2(data, offset)
+        length = short_to_int(data, offset)
         offset += 2
         offset += length
 
@@ -536,8 +583,7 @@ def get_signature_values(signature_packet_data):
     data_len = len(data)
     result = []
     while offset < data_len:
-        mpi, o = get_mpi(data, offset)
-        offset += o
+        mpi, offset = utils.mpi_to_int(data, offset)
         result.append(mpi)
 
     return result

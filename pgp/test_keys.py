@@ -29,7 +29,6 @@ from Crypto.PublicKey import DSA
 from Crypto.PublicKey import ElGamal
 from Crypto.PublicKey import RSA
 from Crypto.Util.number import bytes_to_long
-from pgpdump.utils import get_int_bytes
 
 from pgp import utils
 
@@ -404,16 +403,16 @@ def make_fingerprint(pubkey):
         if pubkey['pub_algorithm_type'] in (1, 2, 3):
             key_id = ('%X' % pubkey['modulus'])[-8:].zfill(8)
             pubkey['key_id'] = key_id.encode('ascii')
-            md5.update(get_int_bytes(pubkey['modulus']))
-            md5.update(get_int_bytes(pubkey['exponent']))
+            md5.update(utils.int_to_bytes(pubkey['modulus']))
+            md5.update(utils.int_to_bytes(pubkey['exponent']))
         elif pubkey['pub_algorithm_type'] == 16:
             # Of course, there are ELG keys in the wild too. This formula
             # for calculating key_id and fingerprint is derived from an old
             # key and there is a test case based on it.
             key_id = ('%X' % pubkey['prime'])[-8:].zfill(8)
             pubkey['key_id'] = key_id.encode('ascii')
-            md5.update(get_int_bytes(pubkey['prime']))
-            md5.update(get_int_bytes(pubkey['group_gen']))
+            md5.update(utils.int_to_bytes(pubkey['prime']))
+            md5.update(utils.int_to_bytes(pubkey['group_gen']))
         fingerprint = md5.hexdigest().upper().encode('ascii')
     elif pubkey['version'] >= 4:
         sha1 = SHA.new()

@@ -27,8 +27,6 @@ from datetime import datetime
 from datetime import timedelta
 import time
 
-from pgpdump.utils import get_int2
-
 from pgp.compat import raise_with
 from pgp.exceptions import CannotValidateSignature
 from pgp.exceptions import InvalidBackSignature
@@ -46,10 +44,7 @@ from pgp.exceptions import SigningKeyHasBeenRevoked
 from pgp.exceptions import SigningKeyHasExpired
 from pgp.exceptions import UnexpectedSignatureType
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
-from pgp.utils import get_signature_values
-from pgp.utils import get_public_key_constructor
-from pgp.utils import hash_packet_for_signature
-from pgp.utils import verify_hash
+from pgp import utils
 
 
 def get_revocation_keys(key_data):
@@ -75,7 +70,7 @@ def check_back_signatures(key_data, signature_data, strict=False):
             hashed_subpacket_data = get_hashed_subpacket_data(
                                         sig['_data']
                                         )
-            hash_ = hash_packet_for_signature(
+            hash_ = utils.hash_packet_for_signature(
                         signature_data['parent']['_data'],
                         14,
                         key_data['_data'],
@@ -194,7 +189,7 @@ def get_hashed_subpacket_data(data):
         offset += 1
         offset += 1
         offset += 1
-        length = get_int2(data, offset)
+        length = utils.short_to_int(data, offset)
         offset += 2
         return data[offset:offset + length]
 
@@ -204,8 +199,8 @@ def key_verify(algorithm_type, expected_hash, signature_data, key_data):
     the data being signed using the key that made the signature.
     """
 
-    key_constructor = get_public_key_constructor(algorithm_type)
-    signature_values = get_signature_values(signature_data['_data'])
+    key_constructor = utils.get_public_key_constructor(algorithm_type)
+    signature_values = utils.get_signature_values(signature_data['_data'])
 
     if algorithm_type == 17:
         key_obj = key_constructor((long(key_data['prime']),
@@ -225,8 +220,8 @@ def key_verify(algorithm_type, expected_hash, signature_data, key_data):
     else:
         raise UnsupportedPublicKeyAlgorithm(algorithm_type)
 
-    if not verify_hash(algorithm_type, key_obj, expected_hash,
-                       signature_values):
+    if not utils.verify_hash(algorithm_type, key_obj, expected_hash,
+                             signature_values):
         raise SignatureVerificationFailed()
 
 
@@ -287,7 +282,7 @@ def validate_signature(public_key_data, target_type, target_packet,
     hashed_subpacket_data = get_hashed_subpacket_data(
                                 signature_data['_data']
                                 )
-    hash_ = hash_packet_for_signature(
+    hash_ = utils.hash_packet_for_signature(
                 public_key_data['_data'],
                 target_type,
                 target_packet['_data'],

@@ -14,15 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import pgpdump
-
 from pgp.merge import key_to_merge_updates
+from pgp.packets import parsers
 from pgp.parse import parse
 from pgp.signature_verification import validate_signatures
 
 
-def add_keys_merge(parser, db):
-    for key_data in parse(parser):
+def add_keys_merge(packets, db):
+    for key_data in parse(packets):
         validate_signatures(key_data, db)
         key_data = key_to_merge_updates(key_data, db)
 
@@ -32,12 +31,12 @@ def add_keys_merge(parser, db):
 
 
 def add_keys_merge_binary(data, db):
-    parser = pgpdump.BinaryData(data)
-    public_keys = add_keys_merge(parser, db)
+    packets = parsers.parse_binary_packet_data(data)
+    public_keys = add_keys_merge(packets, db)
     return public_keys
 
 
 def add_keys_merge_ascii(data, db):
-    parser = pgpdump.AsciiData(data)
-    public_keys = add_keys_merge(parser, db)
+    packets = parsers.parse_ascii_packet_data(data)
+    public_keys = add_keys_merge(packets, db)
     return public_keys
