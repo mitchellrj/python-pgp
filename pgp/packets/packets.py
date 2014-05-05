@@ -52,6 +52,9 @@ class Packet(object):
     def content(self):
         return bytearray()
 
+    def get_content_for_signature_hash(self, signature_version):
+        return self.content
+
     def __bytes__(self):
         data = self.content
         data_length = len(data)
@@ -294,6 +297,38 @@ class SignaturePacket(Packet):
 
         return data
 
+    def get_signature_hash_trailer(self):
+        result = bytearray()
+        if self.version >= 4:
+            result.append(self.version)
+        result.append(self.signature_type)
+        if self.version < 4:
+            result.extend(utils.int_to_4byte(self.creation_time))
+        else:
+            result.append(self.public_key_algorithm)
+            result.append(self.hash_algorithm)
+            hashed_subpacket_data = bytearray()
+            for sp in self.subpackets:
+                if not sp.hashed:
+                    continue
+                hashed_subpacket_data.extend(bytes(sp))
+
+            hashed_subpacket_length = len(hashed_subpacket_data)
+            result.extend(utils.int_to_2byte(hashed_subpacket_length))
+            result.extend(hashed_subpacket_data)
+            result.append(self.version)
+            result.append(255)
+            result.extend(utils.int_to_4byte(hashed_subpacket_length + 6))
+
+        return result
+
+    def get_content_for_signature_hash(self, signature_version):
+        result = bytearray([0x88])
+        sig_hash_data = self.get_signature_hash_trailer()
+        result.extend(utils.int_to_2byte(len(sig_hash_data)))
+        result.extend(sig_hash_data)
+        return result
+
 
 class SymmetricKeyEncryptedSessionKeyPacket(Packet):
 
@@ -472,6 +507,13 @@ class PublicKeyPacket(Packet):
             data.extend(utils.int_to_mpi(self.key_value))
         else:
             raise NotImplemented
+
+    def get_content_for_signature_hash(self, signature_version):
+        key_data = self.content
+        result = bytearray([0x99])
+        result.extend(utils.int_to_2byte(len(key_data)))
+        result.extend(key_data)
+        return result
 
 
 class PublicSubkeyPacket(PublicKeyPacket):
@@ -773,6 +815,15 @@ class UserIDPacket(Packet):
     def content(self):
         return self.user_id.encode('utf8', 'replace')
 
+    def get_content_for_signature_hash(self, signature_version):
+        result = bytearray()
+        packet_data = self.content
+        if signature_version >= 4:
+            result.append(0xb4)
+            result.extend(utils.int_to_4byte(len(packet_data)))
+        result.extend(packet_data)
+        return result
+
 
 class OldCommentPacket(Packet):
     """From first draft of RFC 2440
@@ -823,6 +874,15 @@ class UserAttributePacket(Packet):
         result = bytearray()
         for sp in self.subpackets:
             result.extend(bytes(sp))
+        return result
+
+    def get_content_for_signature_hash(self, signature_version):
+        result = bytearray()
+        packet_data = self.content
+        if signature_version >= 4:
+            result.append(0xd1)
+            result.extend(utils.int_to_4byte(len(packet_data)))
+        result.extend(packet_data)
         return result
 
 
