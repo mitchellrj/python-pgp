@@ -44,6 +44,10 @@ class Packet(object):
         self.header_format = header_format
         self.type = type_
 
+    def __repr__(self):
+        return '<{0} at 0x{1:x}>'.format(self.__class__.__name__,
+                                         id(self))
+
     @property
     def content(self):
         return bytearray()
@@ -220,6 +224,11 @@ class SignaturePacket(Packet):
                    public_key_algorithm, hash_algorithm, hash2,
                    signature_values, creation_time, key_id, hashed_subpackets,
                    unhashed_subpackets)
+
+    def __repr__(self):
+        return '<{0} 0x{1:02x} at 0x{2:x}>'.format(self.__class__.__name__,
+                                                   self.signature_type,
+                                                   id(self))
 
     def __init__(self, header_format, version, signature_type,
                  public_key_algorithm, hash_algorithm, hash2,
@@ -754,6 +763,11 @@ class UserIDPacket(Packet):
     def __init__(self, header_format, user_id):
         Packet.__init__(self, header_format, constants.USER_ID_PACKET_TYPE)
         self.user_id = user_id
+
+    def __repr__(self):
+        return '<{0} {1} at 0x{2:x}>'.format(self.__class__.__name__,
+                                             repr(self.user_id),
+                                             id(self))
 
     @property
     def content(self):
