@@ -240,19 +240,41 @@ def hash_user_data(hash_, target_type, target_packet_data, signature_version):
 
 
 def hash_packet_for_signature(public_key_packet_data, target_type,
-                              packet_data, signature_type, signature_version,
-                              hash_algorithm_type, signature_creation_time,
-                              pub_algorithm_type, hashed_subpacket_data=None):
+                              packet_data_for_hash, signature_type,
+                              signature_version, hash_algorithm_type,
+                              signature_creation_time, pub_algorithm_type,
+                              hashed_subpacket_data=None):
     hash_ = get_hash_instance(hash_algorithm_type)
 
     if signature_type in (0x1f, 0x20):
         hash_key(hash_, public_key_packet_data)
     elif signature_type in (0x18, 0x19, 0x28):
         hash_key(hash_, public_key_packet_data)
-        hash_key(hash_, packet_data)
-    else:
+        hash_key(hash_, packet_data_for_hash)
+    elif signature_type == 0x50:
+        hash_.update(b'\x88')
+        hash_.update(len(packet_data_for_hash))
+        hash_.update(packet_data_for_hash)
+    elif signature_type in (0x00, 0x01):
+        hash_.update(packet_data_for_hash)
+    elif signature_type == 0x02:
+        pass
+    elif signature_type in (0x10, 0x11, 0x12, 0x13, 0x30):
         hash_key(hash_, public_key_packet_data)
-        hash_user_data(hash_, target_type, packet_data, signature_version)
+        hash_user_data(hash_, target_type, packet_data_for_hash,
+                       signature_version)
+    elif signature_type == 0x40:
+        # Timestamp signatures are poorly defined and semi-deprecated.
+        #
+        # RFC 1991 defines it as "a signature of a signature, as a notary seal
+        # on a signed document." We'll just treat it the same as 0x50 for now.
+        #
+        # https://tools.ietf.org/html/rfc1991
+        # http://www.imc.org/ietf-openpgp/mail-archive/msg04966.html
+        # http://www.imc.org/ietf-openpgp/mail-archive/msg04970.html
+        hash_.update(b'\x88')
+        hash_.update(len(packet_data_for_hash))
+        hash_.update(packet_data_for_hash)
 
     if signature_version >= 4:
         hash_.update(bytearray([signature_version]))
