@@ -86,3 +86,7 @@ ADDITIONAL_RECIPIENT_REQUEST_SUBPACKET_TYPE = 10  # From RFC 2440 draft 1
 
 # User attribute subpacket types
 IMAGE_ATTRIBUTE_SUBPACKET_TYPE = 1
+
+
+# User attribute image subpacket image formats
+JPEG_IMAGE_FORMAT = 1
