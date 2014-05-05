@@ -195,18 +195,6 @@ def get_public_key_constructor(type_):
         raise UnsupportedPublicKeyAlgorithm(type_)
 
 
-def get_bitlen(public_key_data):
-    pub_algorithm_type = public_key_data['pub_algorithm_type']
-    if pub_algorithm_type in (1, 3):
-        n = public_key_data['modulus']
-    elif pub_algorithm_type == 17:
-        n = public_key_data['prime']
-    elif pub_algorithm_type in (16, 20):
-        n = public_key_data['prime']
-
-    return int(math.ceil(float(math.log(n, 2))))
-
-
 def hash_key(hash_, key_packet_data):
     """Adds key data to a hash for signature comparison."""
 
