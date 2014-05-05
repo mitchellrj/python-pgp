@@ -297,7 +297,8 @@ def hash_packet_for_signature(public_key_packet_data, target_type,
 def bytes_to_int(bytes_, offset, length):
     result = 0
     for i in range(length):
-        result += (bytes_[offset + i] << (8 * i)) & 0xff
+        shift = 8 * (length - i - 1)
+        result += bytes_[offset + i] << shift
     return result
 
 
@@ -319,9 +320,10 @@ def mpi_to_int(bytes_, offset):
     mpi_byte_length = int(math.ceil(mpi_bit_length / 8.0))
     result = 0
     for i in range(mpi_byte_length):
-        shift = (mpi_byte_length - i) * 8
-        result += (bytes_[offset + i] << shift) & 0xff
+        shift = (mpi_byte_length - i - 1) * 8
+        result += bytes_[offset + i] << shift
 
+    offset += mpi_byte_length
     return result, offset
 
 
@@ -393,6 +395,16 @@ def int_to_s2k_count(i):
         raise ValueError(i)
     bits = (i >> shift) & 15
     return ((shift - EXPBIAS) << 4) + bits
+
+
+def int_to_hex(i, expected_size=None):
+    fmt = '{:x}'
+    if expected_size is not None:
+        fmt = '{{:0{size}x}}'.format(size=expected_size)
+    result = fmt.format(i)
+    if expected_size is not None:
+        result = result[-expected_size:]
+    return result
 
 
 def int_to_mpi(i):
