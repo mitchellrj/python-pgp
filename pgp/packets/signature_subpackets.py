@@ -265,12 +265,12 @@ class IssuerSubpacket(SignatureSubpacket):
     @classmethod
     def from_subpacket_content(cls, type_, critical, sub_data):
         assert len(sub_data) == 8
-        key_id = utils.bytearray_to_hex(sub_data, 0, 8)
+        key_id = utils.bytearray_to_hex(sub_data, 0, 16)
         return cls(critical, key_id)
 
     def __init__(self, critical, key_id):
         SignatureSubpacket.__init__(
-                self, constants.ISSUER_SUBPACKET_TYPE, critical)
+                self, constants.ISSUER_KEY_ID_SUBPACKET_TYPE, critical)
         self.key_id = key_id
 
     @property
@@ -472,7 +472,7 @@ class UserIDSubpacket(SignatureSubpacket):
 
     def __init__(self, critical, user_id):
         SignatureSubpacket.__init__(
-                self, constants.PRIMARY_USER_ID_SUBPACKET_TYPE, critical)
+                self, constants.ISSUERS_USER_ID_SUBPACKET_TYPE, critical)
         self.user_id = user_id
 
     @property
@@ -599,7 +599,7 @@ SIGNATURE_SUBPACKET_TYPES = {
     constants.PREFERRED_SYMMETRIC_ALGORITHMS_SUBPACKET_TYPE:
         PreferredSymmetricAlgorithmsSubpacket,
     constants.REVOCATION_KEY_SUBPACKET_TYPE: RevocationKeySubpacket,
-    constants.ISSUER_SUBPACKET_TYPE: IssuerSubpacket,
+    constants.ISSUER_KEY_ID_SUBPACKET_TYPE: IssuerSubpacket,
     constants.NOTATION_SUBPACKET_TYPE: NotationSubpacket,
     constants.PREFERRED_HASH_ALGORITHMS_SUBPACKET_TYPE:
         PreferredHashAlgorithmsSubpacket,
@@ -612,7 +612,7 @@ SIGNATURE_SUBPACKET_TYPES = {
     constants.PRIMARY_USER_ID_SUBPACKET_TYPE: PrimaryUserIDSubpacket,
     constants.POLICY_URI_SUBPACKET_TYPE: PolicyURISubpacket,
     constants.KEY_FLAGS_SUBPACKET_TYPE: KeyFlagsSubpacket,
-    constants.SIGNERS_USER_ID_SUBPACKET_TYPE: UserIDSubpacket,
+    constants.ISSUERS_USER_ID_SUBPACKET_TYPE: UserIDSubpacket,
     constants.REVOCATION_REASON_SUBPACKET_TYPE: RevocationReasonSubpacket,
     constants.FEATURES_SUBPACKET_TYPE: FeaturesSubpacket,
     constants.TARGET_SUBPACKET_TYPE: TargetSubpacket,

@@ -42,7 +42,7 @@ class Packet(object):
 
     def __init__(self, header_format, type_):
         self.header_format = header_format
-        self.type_ = type_
+        self.type = type_
 
     @property
     def content(self):
@@ -51,7 +51,7 @@ class Packet(object):
     def __bytes__(self):
         data = self.content
         data_length = len(data)
-        packet_type = self.type_
+        packet_type = self.type
         tag = 0x80
         result = bytearray()
         if self.header_format == constants.NEW_PACKET_HEADER_TYPE:
@@ -60,7 +60,7 @@ class Packet(object):
             while remaining:
                 # "An implementation MAY use Partial Body Lengths for data
                 #  packets, be they literal, compressed, or encrypted."
-                allow_partial = self.type_ in constants.DATA_TYPES
+                allow_partial = self.type in constants.DATA_TYPES
                 tag += 0x40 + packet_type
                 result = bytearray([tag])
                 packet_length_bytes, remaining = \
@@ -388,7 +388,7 @@ class PublicKeyPacket(Packet):
         modulus = None
         exponent = None
         prime = None
-        group_gen = None
+        group_generator = None
         group_order = None
         key_value = None
         if public_key_algorithm in (1, 2, 3):
@@ -396,19 +396,20 @@ class PublicKeyPacket(Packet):
             exponent, offset = utils.mpi_to_int(data, offset)
         elif public_key_algorithm in (16, 20):
             prime, offset = utils.mpi_to_int(data, offset)
-            group_gen, offset = utils.mpi_to_int(data, offset)
+            group_generator, offset = utils.mpi_to_int(data, offset)
             key_value, offset = utils.mpi_to_int(data, offset)
         elif public_key_algorithm == 17:
             prime, offset = utils.mpi_to_int(data, offset)
             group_order, offset = utils.mpi_to_int(data, offset)
-            group_gen, offset = utils.mpi_to_int(data, offset)
+            group_generator, offset = utils.mpi_to_int(data, offset)
             key_value, offset = utils.mpi_to_int(data, offset)
         else:
             raise NotImplemented
 
         return offset, (
                 version, creation_time, public_key_algorithm, expiration_days,
-                modulus, exponent, prime, group_gen, group_order, key_value)
+                modulus, exponent, prime, group_generator, group_order,
+                key_value)
 
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
@@ -418,8 +419,8 @@ class PublicKeyPacket(Packet):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_gen=None, group_order=None,
-                 key_value=None):
+                 exponent=None, prime=None, group_generator=None,
+                 group_order=None, key_value=None):
         Packet.__init__(self, header_type, constants.PUBLIC_KEY_PACKET_TYPE)
         self.version = version
         self.creation_time = creation_time
@@ -428,7 +429,7 @@ class PublicKeyPacket(Packet):
         self.modulus = modulus
         self.exponent = exponent
         self.prime = prime
-        self.group_gen = group_gen
+        self.group_generator = group_generator
         self.group_order = group_order
         self.key_value = key_value
 
@@ -450,12 +451,12 @@ class PublicKeyPacket(Packet):
                     "generate Elgamal signatures. These must only be used "
                     "for test purposes.")
             data.extend(utils.int_to_mpi(self.prime))
-            data.extend(utils.int_to_mpi(self.group_gen))
+            data.extend(utils.int_to_mpi(self.group_generator))
             data.extend(utils.int_to_mpi(self.key_value))
         elif self.public_key_algorithm == 17:
             data.extend(utils.int_to_mpi(self.prime))
             data.extend(utils.int_to_mpi(self.group_order))
-            data.extend(utils.int_to_mpi(self.group_gen))
+            data.extend(utils.int_to_mpi(self.group_generator))
             data.extend(utils.int_to_mpi(self.key_value))
         else:
             raise NotImplemented
@@ -465,8 +466,8 @@ class PublicSubkeyPacket(PublicKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_gen=None, group_order=None,
-                 key_value=None):
+                 exponent=None, prime=None, group_generator=None,
+                 group_order=None, key_value=None):
         Packet.__init__(self, header_type,
                         constants.PUBLIC_SUBKEY_PACKET_TYPE)
         self.version = version
@@ -476,7 +477,7 @@ class PublicSubkeyPacket(PublicKeyPacket):
         self.modulus = modulus
         self.exponent = exponent
         self.prime = prime
-        self.group_gen = group_gen
+        self.group_generator = group_generator
         self.group_order = group_order
         self.key_value = key_value
 
@@ -522,8 +523,8 @@ class SecretKeyPacket(PublicKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_gen=None, group_order=None,
-                 key_value=None, s2k_specification=None,
+                 exponent=None, prime=None, group_generator=None,
+                 group_order=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
                  checksum=None):
 
@@ -537,7 +538,7 @@ class SecretKeyPacket(PublicKeyPacket):
         self.modulus = modulus
         self.exponent = exponent
         self.prime = prime
-        self.group_gen = group_gen
+        self.group_generator = group_generator
         self.group_order = group_order
         self.key_value = key_value
         self.s2k_specification = s2k_specification
@@ -570,8 +571,8 @@ class SecretSubkeyPacket(SecretKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_gen=None, group_order=None,
-                 key_value=None, s2k_specification=None,
+                 exponent=None, prime=None, group_generator=None,
+                 group_order=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
                  checksum=None):
 
@@ -586,7 +587,7 @@ class SecretSubkeyPacket(SecretKeyPacket):
         self.modulus = modulus
         self.exponent = exponent
         self.prime = prime
-        self.group_gen = group_gen
+        self.group_generator = group_generator
         self.group_order = group_order
         self.key_value = key_value
         self.s2k_specification = s2k_specification
