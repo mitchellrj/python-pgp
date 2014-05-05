@@ -14,11 +14,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import hashlib
 import math
 
-from Crypto import Hash
-from Crypto import PublicKey
+from Crypto.Hash import MD5
+from Crypto.Hash import RIPEMD
+from Crypto.Hash import SHA
+from Crypto.Hash import SHA224
+from Crypto.Hash import SHA256
+from Crypto.Hash import SHA384
+from Crypto.Hash import SHA512
+from Crypto.PublicKey import DSA
+from Crypto.PublicKey import ElGamal
+from Crypto.PublicKey import RSA
 from Crypto.Random import random
 from Crypto.Signature import PKCS1_v1_5
 from Crypto.Util.number import bytes_to_long
@@ -28,7 +35,6 @@ from Crypto.Util.number import long_to_bytes
 from pgp.exceptions import PublicKeyAlgorithmCannotSign
 from pgp.exceptions import UnsupportedDigestAlgorithm
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
-from pgp import utils
 
 
 hash_lengths = {
@@ -129,28 +135,19 @@ def get_hash_instance(type_):
     """
 
     if type_ == 1:
-        return Hash.MD5.new()
+        return MD5.new()
     elif type_ == 2:
-        return Hash.SHA.new()
+        return SHA.new()
     elif type_ == 3:
-        return Hash.RIPEMD.new()
+        return RIPEMD.new()
     elif type_ == 8:
-        return Hash.SHA256.new()
+        return SHA256.new()
     elif type_ == 9:
-        try:
-            return Hash.SHA384.new()  # @UndefinedVariable
-        except AttributeError:
-            return hashlib.new('sha384')
+        return SHA384.new()
     elif type_ == 10:
-        try:
-            return Hash.SHA512.new()  # @UndefinedVariable
-        except AttributeError:
-            return hashlib.new('sha512')
+        return SHA512.new()
     elif type_ == 11:
-        try:
-            return Hash.SHA224.new()  # @UndefinedVariable
-        except AttributeError:
-            return hashlib.new('sha224')
+        return SHA224.new()
     else:
         raise UnsupportedDigestAlgorithm(type_)
 
@@ -161,21 +158,21 @@ def get_public_key_constructor(type_):
     """
     if type_ == 1:
         # rsa encrypt or sign
-        return PublicKey.RSA.construct
+        return RSA.construct
     elif type_ == 2:
         # rsa encrypt only
         # invalid for signing
         raise PublicKeyAlgorithmCannotSign(2)
     elif type_ == 3:
         # rsa sign only
-        return PublicKey.RSA.construct
+        return RSA.construct
     elif type_ == 16:
         # elgamel encrypt only
         # invalid for signing
         raise PublicKeyAlgorithmCannotSign(16)
     elif type_ == 17:
         # dsa
-        return PublicKey.DSA.construct
+        return DSA.construct
     elif type_ == 18:
         # ec
         # invalid for signing
@@ -185,7 +182,7 @@ def get_public_key_constructor(type_):
         raise UnsupportedPublicKeyAlgorithm(19)
     elif type_ == 20:
         # elgamel encrypt or sign
-        return PublicKey.ElGamal.construct
+        return ElGamal.construct
     elif type_ == 21:
         # diffie-hellman
         # invalid for signing
@@ -542,7 +539,7 @@ def hash_key_data(packets):
     canonical_key_data = concat_key(sort_key(packets))
     if not canonical_key_data:
         return bytes('')
-    return bytearray(Hash.MD5.new(canonical_key_data).hexdigest())
+    return bytearray(MD5.new(canonical_key_data).hexdigest())
 
 
 def get_signature_values(signature_packet_data):
@@ -583,7 +580,7 @@ def get_signature_values(signature_packet_data):
     data_len = len(data)
     result = []
     while offset < data_len:
-        mpi, offset = utils.mpi_to_int(data, offset)
+        mpi, offset = mpi_to_int(data, offset)
         result.append(mpi)
 
     return result
