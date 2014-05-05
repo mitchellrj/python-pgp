@@ -508,6 +508,8 @@ class PublicKeyPacket(Packet):
         else:
             raise NotImplemented
 
+        return data
+
     def get_content_for_signature_hash(self, signature_version):
         key_data = self.content
         result = bytearray([0x99])
