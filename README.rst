@@ -38,6 +38,32 @@ with Twofish & Camellia support::
 
     pip install pgp[camellia,twofish]
 
+Usage
+=====
+
+Parsing a packet stream
+-----------------------
+::
+    
+    from pgp.packets import parsers
+    parsers.parse_binary_packet_data(packet_data)
+
+Serializing a packet
+--------------------
+::
+    
+    from pgp.packets import parsers
+    packets = parsers.parse_binary_packet_data(packet_data)
+    bytes(next(packets))
+
+Parsing a transferable public key
+---------------------------------
+::
+    
+    from pgp import models
+    from pgp.packets import parsers
+    packets = list(parsers.parse_binary_packet_data(packet_data))
+    models.TransferablePublicKey.from_packets(packets)
 
 Development
 ===========
