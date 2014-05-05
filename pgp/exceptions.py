@@ -44,7 +44,7 @@ class InvalidKeyPacketOrder(InvalidKey):
 
 
 class InvalidKeyPacketType(InvalidKey):
-    """This packet is not valid for a transferrable public key."""
+    """This packet is not valid for a transferable public key."""
 
 
 class InvalidUserAttribute(InvalidKey):
