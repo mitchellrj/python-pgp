@@ -73,8 +73,11 @@ class Packet(object):
 
         else:
             tag += (packet_type << 2)
+            length_type, length_bytes = \
+                utils.old_packet_length_to_bytes(data_length)
+            tag += length_type
             result = bytearray([tag])
-            result.extend(utils.old_packet_length_to_bytes(data_length))
+            result.extend(length_bytes)
             result.extend(data)
 
         return bytes(result)

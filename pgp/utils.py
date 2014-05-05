@@ -473,7 +473,7 @@ def old_packet_length_to_bytes(data_length):
         length_type = 1
         length_bytes = [data_length >> 8,
                         data_length & 0xff]
-    elif length_type < 16777216:
+    elif data_length < 16777216:
         length_type = 2
         length_bytes = [data_length >> 24,
                         (data_length >> 16) & 0xff,
@@ -482,7 +482,7 @@ def old_packet_length_to_bytes(data_length):
     else:
         length_type = 3
         length_bytes = []
-    return length_bytes
+    return length_type, length_bytes
 
 
 def hex_to_bytes(hex_val, expected_length):
