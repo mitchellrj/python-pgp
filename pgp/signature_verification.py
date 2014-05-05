@@ -47,6 +47,12 @@ from pgp.exceptions import UnsupportedPublicKeyAlgorithm
 from pgp import utils
 
 
+try:
+    long
+except NameError:
+    long = int
+
+
 def get_revocation_keys(key_data):
     """Returns a list of revocation key IDs for the given public key
     data. Does not return revocation keys for subkeys.
