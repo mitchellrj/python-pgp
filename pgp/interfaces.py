@@ -133,7 +133,8 @@ class IPublicKey(ISignable):
     group_order_q = Attribute("")
     key_value_y = Attribute("")
     creation_time = Attribute("A datetime of when the key was created")
-    expiration_time = Attribute("A datetime of when the key will expire, or None")
+    expiration_time = Attribute("A datetime of when the key will expire, or "
+                                "None")
 
     # Data that may be populated by self-signatures
     preferred_compression_algorithms = Attribute("List of int")
