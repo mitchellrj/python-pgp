@@ -1401,25 +1401,39 @@ class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
         self.subkeys = []
 
 
+# https://tools.ietf.org/html/rfc4880#section-11.3
 class OpenPGPMessage(object):
+    # One of EncryptedMessage, SignedMessage, CompressedMessage or
+    # LiteralMessage.
     pass
 
 
 class EncryptedMessage(OpenPGPMessage):
+    # A symmetrically encrypted data packet or a symmetrically encrypted
+    # integrity protected data packet, optionally preceded by a
+    # sequence of public-key encrypted session key packets or
+    # symmetric key encrypted session key packets
     pass
 
 
 class SignedMessage(OpenPGPMessage):
+    # A signature packet followed by any other message type, or a
+    # one-pass signature packet followed by a message type, followed by a
+    # matching signature packet
     pass
 
 
 class CompressedMessage(OpenPGPMessage):
+    # A compressed data packet
     pass
 
 
 class LiteralMessage(OpenPGPMessage):
+    # A literal data packet
     pass
 
 
+# https://tools.ietf.org/html/rfc4880#section-11.4
 class DetachedSignature(object):
+    # A single signature packet
     pass
