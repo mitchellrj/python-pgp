@@ -10,7 +10,7 @@ for test purposes. This may be a bit of a heavyweight solution for some
 purposes.
 
 Alternatives
-------------
+============
 
 Other Python packages which provide related functionality:
 
@@ -34,22 +34,22 @@ Other Python packages which provide related functionality:
   OpenPGP-compatible way.
 
 System requirements
-===================
+-------------------
 
 * build-essential
 
 For Twofish support
--------------------
+===================
 
 * libtwofish-dev
 
 Recommended
------------
+===========
 
 * libgmp10-dev (for fastmath extension of pycrypto)
 
 Installation
-============
+------------
 ::
 
     pip install pgp
@@ -68,17 +68,17 @@ with Twofish & Camellia support::
     pip install pgp[camellia,twofish]
 
 Usage
-=====
+-----
 
 Parsing a packet stream
------------------------
+=======================
 ::
     
     from pgp.packets import parsers
     parsers.parse_binary_packet_data(packet_data)
 
 Serializing a packet
---------------------
+====================
 ::
     
     from pgp.packets import parsers
@@ -86,7 +86,7 @@ Serializing a packet
     bytes(next(packets))
 
 Parsing a transferable public key
----------------------------------
+=================================
 ::
     
     from pgp import models
@@ -95,21 +95,27 @@ Parsing a transferable public key
     models.TransferablePublicKey.from_packets(packets)
 
 Development
-===========
+-----------
 
-To install development dependencies, install the 'dev' extras.::
+The main repository for this package is `on GitHub
+<https://github.com/mitchellrj/python-pgp>`_. To develop on the package
+and install development dependencies, clone the repository and install
+the 'dev' extras.::
 
-    pip install -e ".[dev]"
+    git clone git@github.com:mitchellrj/python-pgp.git
+    cd python-pgp
+    virtualenv .
+    bin/pip install -e ".[dev]"
 
 Running tests
--------------
+=============
 ::
 
-    python setup.py nosetests
+    bin/python setup.py nosetests
 
 Building documentation
-----------------------
+======================
 ::
 
-    python setup.py build_sphinx
+    bin/python setup.py build_sphinx
 

@@ -1,5 +1,5 @@
 License
-=======
+-------
 Copyright (C) 2014 Richard Mitchell
 
 This program is free software: you can redistribute it and/or modify
