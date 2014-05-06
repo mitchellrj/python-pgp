@@ -14,22 +14,22 @@ Alternatives
 
 Other Python packages which provide related functionality:
 
-* `pyassuan<https://pypi.python.org/pypi/pyassuan/>`_ - communicate
+* `pyassuan <https://pypi.python.org/pypi/pyassuan/>`_ - communicate
   with GnuPG using its socket protocol.
-* `pgpdump<https://pypi.python.org/pypi/pgpdump>`_ - a pure python
+* `pgpdump <https://pypi.python.org/pypi/pgpdump>`_ - a pure python
   library for parsing OpenPGP packets.
-* `gnupg<https://pypi.python.org/pypi/gnupg>`_ - a wrapper around the
+* `gnupg <https://pypi.python.org/pypi/gnupg>`_ - a wrapper around the
   GnuPG executable.
-* `python-gnupg<https://pypi.python.org/pypi/python-gnupg>`_ - another
+* `python-gnupg <https://pypi.python.org/pypi/python-gnupg>`_ - another
   wrapper around the GnuPG executable.
-* `gpgkeys<https://pypi.python.org/pypi/gpgkeys>`_ - another wrapper
+* `gpgkeys <https://pypi.python.org/pypi/gpgkeys>`_ - another wrapper
   around the GnuPG executable.
-* `gpglib<https://pypi.python.org/pypi/gpglib>`_ - a pure python
+* `gpglib <https://pypi.python.org/pypi/gpglib>`_ - a pure python
   library for parsing OpenPGP packets and decrypting messages.
-* `OpenPGP<https://pypi.python.org/pypi/OpenPGP>`_ - an unmaintained
+* `OpenPGP <https://pypi.python.org/pypi/OpenPGP>`_ - an unmaintained
   pure python library with much of the functionality of old versions
   of GnuPG.
-* `encryptedfile<https://pypi.python.org/pypi/encryptedfile>`_ - a
+* `encryptedfile <https://pypi.python.org/pypi/encryptedfile>`_ - a
   pure python library for symmetrically encrypting files in an
   OpenPGP-compatible way.
 
