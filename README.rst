@@ -1,8 +1,15 @@
+==========
+python-pgp
+==========
+
 .. image:: https://travis-ci.org/mitchellrj/python-pgp.svg?branch=master
    :target: https://travis-ci.org/mitchellrj/python-pgp
 
 .. image:: https://coveralls.io/repos/mitchellrj/python-pgp/badge.png
    :target: https://coveralls.io/r/mitchellrj/python-pgp
+
+Summary
+-------
 
 python-pgp aims to reproduce the full functionality of GnuPG in Python.
 It may also be used for creating raw OpenPGP packets and packet streams
