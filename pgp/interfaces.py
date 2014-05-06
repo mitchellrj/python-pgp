@@ -156,30 +156,11 @@ class IPublicKey(ISignable):
 
 class ISecretKey(IPublicKey):
 
-    pass
-#    def sign(self, data):
-#        pass
-#
-#    def decrypt(self, data):
-#        pass
-#
-#    def is_unlocked(self):
-#        pass
-#
-#    def unlock(self, passphrase):
-#        pass
-#
-#    def lock(self):
-#        pass
-#
-#    # RSA secrets
-#    secret_exponent_d = Attribute("")
-#    secret_prime_p = Attribute("")
-#    secret_prime_q = Attribute("")
-#    multiplicative_inverse_u = Attribute("")
-#
-#    # DSA & Elgamal secrets
-#    secret_exponent_x = Attribute("")
+    s2k_specification = Attribute("IS2KSpecification")
+    symmetric_algorithm = Attribute("int")
+    iv = Attribute("bytes")
+    encrypted_portion = Attribute("bytes")
+    checksum = Attribute("bytes")
 
 
 class IUserID(ISignable):
@@ -212,6 +193,11 @@ class ITransferablePublicKeyFactory(Interface):
         """"""
 
 
+class ITransferableSecretKeyFactory(ITransferablePublicKeyFactory):
+
+    pass
+
+
 class ITransferablePublicKey(IPublicKey):
 
     def to_packets(self):
@@ -224,6 +210,21 @@ class ITransferablePublicKey(IPublicKey):
     subkeys = Attribute("")
 
 
-class IPublicSubkey(IPublicKey):
+class ITransferableSecretKey(ITransferablePublicKey, ISecretKey):
+
+    pass
+
+
+class ISubkey(Interface):
 
     primary_public_key = Attribute("")
+
+
+class IPublicSubkey(IPublicKey, ISubkey):
+
+    pass
+
+
+class ISecretSubkey(ISecretKey, ISubkey):
+
+    pass

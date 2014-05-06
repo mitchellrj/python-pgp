@@ -770,7 +770,7 @@ class BasePublicKey(object):
         args = cls._init_args_from_packet(packet)
         return cls(*args)
 
-    def to_packet(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def _to_packet_args(self, header_format=C.NEW_PACKET_HEADER_TYPE):
         creation_time = int(time.mktime(self.creation_time.timetuple()))
         expiration_days = None
         if self.version < 4:
@@ -778,12 +778,16 @@ class BasePublicKey(object):
             if expiration_time is not None:
                 expiration_days = (expiration_time - creation_time).days
 
-        return self._PacketClass(
+        return (
             header_format, self.version, creation_time,
             self.public_key_algorithm, expiration_days, self.modulus_n,
             self.exponent_e, self.prime_p, self.group_generator_g,
             self.group_order_q, self.key_value_y
             )
+
+    def to_packet(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+        args = self._to_packet_args(header_format)
+        return self._PacketClass(*args)
 
     def verify(self, signature):
         raise NotImplemented
@@ -880,7 +884,7 @@ class BasePublicKey(object):
     expiration_time = property(_get_expiration_time, _set_expiration_time)
 
     @property
-    def _key_obj(self):
+    def _public_key_obj(self):
         key_obj = None
         K = utils.get_public_key_constructor(self.public_key_algorithm)
         if self.public_key_algorithm in (1, 2, 3):
@@ -992,6 +996,44 @@ class BasePublicKey(object):
     del __selfsig_attribute
 
 
+class BaseSecretKey(BasePublicKey):
+
+    s2k_specification = None
+    symmetric_algorithm = None
+    iv = None
+    encrypted_portion = None
+    checksum = None
+
+    @classmethod
+    def _init_args_from_packet(cls, packet):
+        args = BasePublicKey._init_args_from_packet(packet)
+        args += (packet.s2k_specifier, packet.symmetric_algorithm,
+                 packet.iv, packet.encrypted_portion, packet.checksum)
+        return args
+
+    def __init__(self, version, public_key_algorithm, creation_time,
+                 expiration_time=None, modulus_n=None, exponent_e=None,
+                 prime_p=None, group_generator_g=None, group_order_q=None,
+                 key_value_y=None, signatures=None, s2k_specification=None,
+                 symmetric_algorithm=None, iv=None, encrypted_portion=None,
+                 checksum=None):
+        BasePublicKey.__init__(self, version, public_key_algorithm,
+                               creation_time, expiration_time, modulus_n,
+                               exponent_e, prime_p, group_generator_g,
+                               group_order_q, key_value_y, signatures)
+        self.s2k_specification = s2k_specification
+        self.symmetric_algorithm = symmetric_algorithm
+        self.iv = iv
+        self.encrypted_portion = encrypted_portion
+        self.checksum = checksum
+
+    def _to_packet_args(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+        args = BasePublicKey._to_packet_args(self, header_format)
+        args += (self.s2k_specification, self.symmetric_algorithm, self.iv,
+                 self.encrypted_portion, self.checksum)
+        return args
+
+
 class PublicSubkey(BasePublicKey):
 
     _self_sig_type = C.SUBKEY_BINDING_SIGNATURE
@@ -1010,6 +1052,15 @@ class PublicSubkey(BasePublicKey):
     @property
     def primary_public_key(self):
         return self._primary_public_key_ref()
+
+
+class SecretSubkey(PublicSubkey, BaseSecretKey):
+
+    _PacketClass = packets.SecretSubkeyPacket
+
+    def __init__(self, primary_public_key, *args, **kwargs):
+        self._primary_public_key_ref = weakref.ref(primary_public_key)
+        BaseSecretKey.__init__(self, *args, **kwargs)
 
 
 @implementer(interfaces.IUserID)
@@ -1146,7 +1197,7 @@ class UserAttribute(object):
         pass
 
 
-def validate_transferrable_public_key(packets):
+def validate_transferrable_key(packets, secret=False):
     # http://tools.ietf.org/html/rfc4880#section-11.1
 
     type_order = list(map(lambda p: p.type, packets))
@@ -1230,11 +1281,12 @@ def validate_transferrable_public_key(packets):
 class TransferablePublicKey(BasePublicKey):
 
     _SubkeyClass = PublicSubkey
+    __secret = False
 
     @classmethod
     def from_packets(cls, packets):
         packets = list(packets)
-        validate_transferrable_public_key(packets)
+        validate_transferrable_key(packets, cls.__secret)
         i = 0
         primary_public_key = cls.from_packet(packets[i])
         primary_public_key_signatures = []
@@ -1334,8 +1386,19 @@ class TransferablePublicKey(BasePublicKey):
         self.subkeys = []
 
 
-class TransferableSecretKey(TransferablePublicKey):
-    pass
+@provider(interfaces.ITransferableSecretKeyFactory)
+@implementer(interfaces.ITransferableSecretKey)
+class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
+
+    _SubkeyClass = SecretSubkey
+    _PacketClass = packets.SecretKeyPacket
+    __secret = True
+
+    def __init__(self, *args, **kwargs):
+        BaseSecretKey.__init__(self, *args, **kwargs)
+        self.user_ids = []
+        self.user_attributes = []
+        self.subkeys = []
 
 
 class OpenPGPMessage(object):
