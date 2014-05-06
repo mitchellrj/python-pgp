@@ -28,5 +28,5 @@ def parse_binary_packet_data(data):
 
 
 def parse_ascii_packet_data(data):
-    armor = ASCIIArmor.from_ascii(ASCIIArmor)
+    armor = ASCIIArmor.from_ascii(data)
     return parse_binary_packet_data(bytes(armor))
