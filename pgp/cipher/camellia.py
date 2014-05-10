@@ -30,7 +30,11 @@ class _CamelliaObj(_InternalObj):
 
     @classmethod
     def _create_impl(cls, key):
-        impl = camcrypt.CamCrypt()
+        try:
+            impl = camcrypt.CamCrypt()
+        except OSError:
+            print(camcrypt.DEFAULT_PATH)
+            raise
         impl.keygen(len(key) * 8, bytes(key))
         return impl
 
