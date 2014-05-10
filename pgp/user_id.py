@@ -4,7 +4,7 @@
 #
 # There are no changes to the AddrlistClass used here.
 #
-# Copyright © 2001-2014 Python Software Foundation; All Rights Reserved
+# Copyright (C) 2001-2014 Python Software Foundation; All Rights Reserved
 # This code is based on work by the Python Software Foundation, released
 # under the Python Software Foundation License. Details can be found at
 # https://docs.python.org/2/license.html
