@@ -27,17 +27,13 @@ __all__ = [
 
 def mul(x, y):
     """Multiplication modulo 65537."""
-    xy = x * y
-    if xy != 0:
-        a = xy & 0xffff
-        b = xy >> 16
-        return (
-            a - b +
-            (1 if a < b else 0)
-            ) & 0xffff
-    if x != 0:
-        return (1 - x) & 0xffff
-    return (1 - y) & 0xffff
+    x = (x - 1) & 0xffff
+    t16 = (y - 1) & 0xffff
+    t32 = x * t16 + x + t16
+    x = t32 & 0xffff
+    t16 = t32 >> 16
+    x = x - t16 + int(x < t16) + 1
+    return x
 
 
 def mul_inv(x):
@@ -47,7 +43,7 @@ def mul_inv(x):
     if x <= 1:
         return x
     t0 = 1
-    t1 = 0x10000 // x
+    t1 = 0x10001 // x
     y = (0x10001 % x) & 0xffff
     while y != 1:
         q = x // y
@@ -57,7 +53,7 @@ def mul_inv(x):
             return t0
         q = y // x
         y = y % x
-        t1 = t1 + (q * t0) & 0xffff
+        t1 = (t1 + (q * t0)) & 0xffff
 
     return (1 - t1) & 0xffff
 
@@ -122,15 +118,15 @@ class AIDEA(object):
         offset = 0
         for _ in range(8):
             x1 = mul(x1 & 0xffff, key_table[offset])
-            x2 = x2 + key_table[offset + 1]
-            x3 = x3 + key_table[offset + 2]
+            x2 += key_table[offset + 1]
+            x3 += key_table[offset + 2]
             x4 = mul(x4 & 0xffff, key_table[offset + 3])
 
             t2 = x1 ^ x3
             t2 = mul(t2 & 0xffff, key_table[offset + 4])
             t1 = t2 + (x2 ^ x4)
             t1 = mul(t1 & 0xffff, key_table[offset + 5])
-            t2 = t1 + t2
+            t2 += t1
 
             x1 ^= t1
             x4 ^= t2
@@ -139,12 +135,12 @@ class AIDEA(object):
             x3 = t2
             offset += 6
 
-        x1 = mul(x1 & 0xffff, key_table[offset]) & 0xffff
-        x2 = (x3 + key_table[offset + 1]) & 0xffff
-        x3 = (x2 + key_table[offset + 2]) & 0xffff
-        x4 = mul(x4 & 0xffff, key_table[offset + 3]) & 0xffff
-
-        block_out = self._shorts_to_bytes([x1, x2, x3, x4])
+        block_out = self._shorts_to_bytes([
+            mul(x1 & 0xffff, key_table[offset]) & 0xffff,
+            (x3 + key_table[offset + 1]) & 0xffff,
+            (x2 + key_table[offset + 2]) & 0xffff,
+            mul(x4 & 0xffff, key_table[offset + 3]) & 0xffff,
+            ])
         return bytes(block_out)
 
     def encrypt(self, block_in):
