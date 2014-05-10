@@ -60,7 +60,9 @@ class _InternalObj(object):
                     'Key must be 16, 24 or 32 bytes long, not {0}'.format(
                         len(key)))
         if mode == MODE_ECB and IV:
-            raise ValueError('ECB mode does not use IV')
+            # Ignore for now
+            pass
+            #raise ValueError('ECB mode does not use IV')
         if mode == MODE_CTR and IV:
             raise ValueError('CTR mode needs counter parameter, not IV')
         if ((IV is None

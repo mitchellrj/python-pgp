@@ -112,7 +112,8 @@ def test_twofish():
             )
         return
     for testcase in get_tests():
-        yield testcase
+        # Hack for Nose
+        yield getattr(testcase, testcase._testMethodName)
 
 
 if hasattr(unittest, 'skip'):
