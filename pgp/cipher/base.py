@@ -62,7 +62,7 @@ class _InternalObj(object):
         if mode == MODE_ECB and IV:
             # Ignore for now
             pass
-            #raise ValueError('ECB mode does not use IV')
+            # raise ValueError('ECB mode does not use IV')
         if mode == MODE_CTR and IV:
             raise ValueError('CTR mode needs counter parameter, not IV')
         if ((IV is None
