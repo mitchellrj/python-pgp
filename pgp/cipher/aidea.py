@@ -26,31 +26,38 @@ __all__ = [
 
 
 def mul(x, y):
-    if x == 0:
-        return (1 - y) & 0xffff
-    elif y == 0:
+    """Multiplication modulo 65537."""
+    xy = x * y
+    if xy != 0:
+        a = xy & 0xffff
+        b = xy >> 16
+        return (
+            a - b +
+            (1 if a < b else 0)
+            ) & 0xffff
+    if x != 0:
         return (1 - x) & 0xffff
-    return (x * y) % 0x10001
+    return (1 - y) & 0xffff
 
 
 def mul_inv(x):
+    """The multiplicative inverse of x, modulo 65537."""
+
     x = x & 0xffff
     if x <= 1:
         return x
-    t1 = 0x10000 / x
-    y = 0x10001 % x
-    if y == 1:
-        return (1 - t1) & 0xffff
     t0 = 1
+    t1 = 0x10000 // x
+    y = (0x10001 % x) & 0xffff
     while y != 1:
-        q = x / y
+        q = x // y
         x = x % y
-        t0 = t0 + (q * t1)
+        t0 = (t0 + (q * t1)) & 0xffff
         if x == 1:
             return t0
-        q = y / x
+        q = y // x
         y = y % x
-        t1 = t1 + (q * t0)
+        t1 = t1 + (q * t0) & 0xffff
 
     return (1 - t1) & 0xffff
 
@@ -58,34 +65,36 @@ def mul_inv(x):
 class AIDEA(object):
 
     def _generate_enc_keys(self, key):
-        result = list(bytearray(key)) + [0] * (52 - len(key))
-        for i in range(8, 52):
-            x = (i - 7) if ((i + 1) % 8 > 0) else (i - 15)
-            y = (i - 14) if ((i + 2) % 8 < 2) else (i - 6)
-            result[i] = ((result[x] << 9) | (result[y] >> 7)) & 0xffff
+        key_shorts = self._bytes_to_shorts(key)
+        result = key_shorts + [0] * (52 - len(key_shorts))
 
+        for i in range(8, 52):
+            x = i - 7 if ((i + 1) % 8 > 0) else i - 15
+            y = i - 14 if ((i + 2) % 8 < 2) else i - 6
+            result[i] = ((result[x] << 9) | (result[y] >> 7)) & 0xffff
         return result
 
     def _generate_dec_keys(self, key, encryption_key_table):
-        result = [0] * 52
-        result[48] = mul_inv(encryption_key_table[0])
-        result[49] = (-encryption_key_table[1]) & 0xffff
-        result[50] = (-encryption_key_table[2]) & 0xffff
-        result[51] = mul_inv(encryption_key_table[3])
+        result = []
+        result.insert(0, mul_inv(encryption_key_table[3]))
+        result.insert(0, (-encryption_key_table[2]) & 0xffff)
+        result.insert(0, (-encryption_key_table[1]) & 0xffff)
+        result.insert(0, mul_inv(encryption_key_table[0]))
 
         offset = 4
         for i in range(42, -1, -6):
-            result[i + 4] = encryption_key_table[offset] & 0xffff
-            result[i + 5] = encryption_key_table[offset + 1] & 0xffff
-            result[i] = mul_inv(encryption_key_table[offset + 2])
-            result[i + 3] = mul_inv(encryption_key_table[offset + 5])
+            result.insert(0, encryption_key_table[offset + 1] & 0xffff)
+            result.insert(0, encryption_key_table[offset] & 0xffff)
+            result.insert(0, mul_inv(encryption_key_table[offset + 5]))
             if i == 0:
-                result[1] = (-encryption_key_table[offset + 3]) & 0xffff
-                result[2] = (-encryption_key_table[offset + 4]) & 0xffff
+                result.insert(0, (-encryption_key_table[offset + 4]) & 0xffff)
+                result.insert(0, (-encryption_key_table[offset + 3]) & 0xffff)
             else:
-                result[i + 2] = (-encryption_key_table[offset + 3]) & 0xffff
-                result[i + 1] = (-encryption_key_table[offset + 4]) & 0xffff
+                result.insert(0, (-encryption_key_table[offset + 3]) & 0xffff)
+                result.insert(0, (-encryption_key_table[offset + 4]) & 0xffff)
+            result.insert(0, mul_inv(encryption_key_table[offset + 2]))
             offset += 6
+
         return result
 
     def __init__(self, key, dummy=None):
@@ -109,31 +118,31 @@ class AIDEA(object):
         return result
 
     def _cipher(self, block_in, key_table):
-        block = self._bytes_to_shorts(block_in)
+        x1, x2, x3, x4 = self._bytes_to_shorts(block_in)
         offset = 0
-        for _ in range(8, 0, -1):
-            block[0] = mul(block[0], key_table[offset])
-            block[1] = (block[1] + key_table[offset + 1]) & 0xffff
-            block[2] = (block[2] + key_table[offset + 2]) & 0xffff
-            block[3] = mul(block[3], key_table[offset + 3])
+        for _ in range(8):
+            x1 = mul(x1 & 0xffff, key_table[offset])
+            x2 = x2 + key_table[offset + 1]
+            x3 = x3 + key_table[offset + 2]
+            x4 = mul(x4 & 0xffff, key_table[offset + 3])
 
-            t2 = block[0] ^ block[2]
-            t2 = mul(t2, key_table[offset + 4])
-            t1 = (t2 + (block[1] ^ block[3])) & 0xffff
-            t1 = mul(t1, key_table[offset + 5])
-            t2 = (t1 + t2) & 0xffff
+            t2 = x1 ^ x3
+            t2 = mul(t2 & 0xffff, key_table[offset + 4])
+            t1 = t2 + (x2 ^ x4)
+            t1 = mul(t1 & 0xffff, key_table[offset + 5])
+            t2 = t1 + t2
 
-            block[0] ^= t1
-            block[3] ^= t2
-            t2 ^= block[1]
-            block[1] = block[2] ^ t1
-            block[2] = t2
+            x1 ^= t1
+            x4 ^= t2
+            t2 ^= x2
+            x2 = x3 ^ t1
+            x3 = t2
             offset += 6
 
-        x1 = mul(block[0], key_table[offset])
-        x2 = (block[2] + key_table[offset + 1]) & 0xffff
-        x3 = (block[1] + key_table[offset + 2]) & 0xffff
-        x4 = mul(block[3], key_table[offset + 3])
+        x1 = mul(x1 & 0xffff, key_table[offset]) & 0xffff
+        x2 = (x3 + key_table[offset + 1]) & 0xffff
+        x3 = (x2 + key_table[offset + 2]) & 0xffff
+        x4 = mul(x4 & 0xffff, key_table[offset + 3]) & 0xffff
 
         block_out = self._shorts_to_bytes([x1, x2, x3, x4])
         return bytes(block_out)
@@ -205,7 +214,7 @@ def new(key, *args, **kwargs):
         It must be a multiple of 8. If 0 or not specified, it will be
         assumed to be 8.
 
-    :Return: an `CamelliaCipher` object
+    :Return: an `AIDEACipher` object
     """
     return AIDEACipher(key, *args, **kwargs)
 
