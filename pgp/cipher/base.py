@@ -50,7 +50,6 @@ class _InternalObj(object):
             **kwargs):
         if mode is None:
             mode = MODE_ECB
-        segment_size = 0
 
         if mode < MODE_ECB or mode > MODE_CTR:
             raise ValueError('Unknown cipher feedback mode {0}'.format(mode))
