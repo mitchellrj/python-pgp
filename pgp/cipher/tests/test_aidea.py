@@ -100,7 +100,7 @@ test_data = [
          '5d9c48bf7dc115f28e153dc93dfcff96',
          '085b8af6788fa6bc1a0b47dcf50fbd35',
          'PyCA, CFB',
-         dict(mode='CFB', iv='58cb2b12bb52c6f1')),
+         dict(mode='CFB', iv='58cb2b12bb52c6f1', segment_size=64)),
 
         ('81883f22165282ba6a442a8dd2a768d4',
          '770e7b0eacc089b7eef410d98d886e9e',
