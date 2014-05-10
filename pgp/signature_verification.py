@@ -89,7 +89,7 @@ def check_back_signatures(key_data, signature_data, strict=False):
                         )
             try:
                 check_signature(key_data, sig, hash_, strict)
-            except InvalidSignature, e:
+            except InvalidSignature as e:
                 raise_with(InvalidBackSignature(key_data['key_id']), e)
 
     if signature_data.get('may_sign_data', False):

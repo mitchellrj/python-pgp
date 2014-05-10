@@ -59,17 +59,17 @@ def verify_openssl(cipher):
                 command.extend(['-iv', extra['iv']])
             try:
                 ciphertext = subprocess.check_output(command)
-            except subprocess.CalledProcessError, e:
-                print '{n} errored.'.format(n=test_name)
-                print ' '.join(command)
-                print e.output
+            except subprocess.CalledProcessError as e:
+                print ('{n} errored.'.format(n=test_name))
+                print (' '.join(command))
+                print (e.output)
                 continue
             if ciphertext[:len(expected_ciphertext)] != expected_ciphertext:
-                print '{n} failed.'.format(n=test_name)
-                print '{c} !='.format(c=binascii.hexlify(ciphertext))
-                print '{ec}'.format(ec=binascii.hexlify(expected_ciphertext))
+                print ('{n} failed.'.format(n=test_name))
+                print ('{c} !='.format(c=binascii.hexlify(ciphertext)))
+                print ('{ec}'.format(ec=binascii.hexlify(expected_ciphertext)))
             else:
-                print '{n} succeeded.'.format(n=test_name)
+                print ('{n} succeeded.'.format(n=test_name))
         except:
             os.unlink(ptfn)
             raise
