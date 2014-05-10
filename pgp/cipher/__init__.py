@@ -22,8 +22,9 @@ __all__ = ['camellia', 'twofish']
 
 try:
     import camcrypt
+    from camcrypt import camellia as _camellia_native
     HAS_CAMELLIA = True
-except ImportError:
+except (ImportError, OSError):
     HAS_CAMELLIA = False
 
 
