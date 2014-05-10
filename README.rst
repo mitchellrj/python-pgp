@@ -101,6 +101,17 @@ Parsing a transferable public key
     packets = list(parsers.parse_binary_packet_data(packet_data))
     models.TransferablePublicKey.from_packets(packets)
 
+Security
+--------
+
+If you are using this package to handle private key data and
+decryption, please note that there is no (reasonable) way currently in
+Python to securely erase memory and that copies of things are made often
+and in non-obvious ways. If you are concerned about key data being
+compromised by a memory leak, do not use this package for handling
+secret key data. On the other hand, "if your memory is constantly being
+compromised, I would re-think your security setup."
+
 Development
 -----------
 
