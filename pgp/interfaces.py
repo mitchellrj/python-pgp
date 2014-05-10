@@ -154,6 +154,10 @@ class IPublicKey(ISignable):
     may_have_multiple_owners = Attribute("bool")
     supports_modification_detection = Attribute("bool")
 
+    # https://www.gnupg.org/documentation/manuals/gnupg/Agent-Protocol.html
+    keygrip = Attribute("The SHA1 hash of the S-expression representing the "
+                        "public key. Used by agents.")
+
 
 class ISecretKey(IPublicKey):
 

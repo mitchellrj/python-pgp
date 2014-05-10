@@ -946,6 +946,25 @@ class BasePublicKey(object):
             fingerprint = sha1.hexdigest().upper()
         return fingerprint
 
+    @property
+    def keygrip(self):
+        sexp = ''
+        if self.public_key_algorithm in (1, 2, 3):
+            sexp = '(public-key(rsa(n{n})(e{e})))'.format(
+                    n=self.modulus_n, e=self.exponent_e)
+        elif self.public_key_algorithm == 17:
+            sexp = '(public-key(dsa(p{p})(q{q})(g{g})(y{y})))'.format(
+                    p=self.prime_p, q=self.group_order_q,
+                    g=self.group_generator_g, y=self.key_value_y)
+        elif self.public_key_algorithm in (16, 20):
+            sexp = '(public-key(elg(p{p})(g{g})(y{y})))'.format(
+                    p=self.prime_p, g=self.group_generator_g,
+                    y=self.key_value_y)
+        else:
+            raise ValueError
+
+        return SHA.new(sexp).hexdigest().upper()
+
     @staticmethod
     def __selfsig_attribute(name, default=None):
         def getter(self):
