@@ -67,7 +67,7 @@ setup(
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: Implementation :: PyPy',
         'Topic :: Security :: Cryptography',
-        ]
+        ],
     packages=find_packages(),
     include_package_data=True,
     zip_safe=False,
