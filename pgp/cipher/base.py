@@ -43,7 +43,7 @@ class _InternalObj(object):
         return self._impl.encrypt(bytes_)
 
     def _decrypt(self, bytes_):
-        return self._impl.encrypt(bytes_)
+        return self._impl.decrypt(bytes_)
 
     @classmethod
     def new(cls, key, mode=None, IV=None, counter=None, segment_size=0, *args,
