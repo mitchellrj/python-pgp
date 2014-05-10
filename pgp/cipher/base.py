@@ -37,7 +37,7 @@ class _InternalObj(object):
 
     @classmethod
     def _create_impl(self, key):
-        raise NotImplemented
+        raise NotImplemented  # pragma: no cover
 
     def _encrypt(self, bytes_):
         return self._impl.encrypt(bytes_)
