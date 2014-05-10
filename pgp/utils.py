@@ -386,9 +386,9 @@ def int_to_s2k_count(i):
 
 
 def int_to_hex(i, expected_size=None):
-    fmt = '{:x}'
+    fmt = '{:X}'
     if expected_size is not None:
-        fmt = '{{:0{size}x}}'.format(size=expected_size)
+        fmt = '{{:0{size}X}}'.format(size=expected_size)
     result = fmt.format(i)
     if expected_size is not None:
         result = result[-expected_size:]
@@ -504,24 +504,30 @@ def old_packet_length_to_bytes(data_length):
     return length_type, length_bytes
 
 
-def hex_to_bytes(hex_val, expected_length):
-    result = bytearray([0] * expected_length)
+def hex_to_bytes(hex_val, expected_length=None):
+    result = bytearray()
+    if expected_length is not None:
+        result.extend([0] * expected_length)
+
     for i in range(int(len(hex_val) / 2)):
         idx = i * 2
         result.append(int(hex_val[idx:idx + 2], 16))
-    return result[-expected_length:]
+
+    if expected_length is not None:
+        result = result[-expected_length:]
+    return result
 
 
 def bytearray_to_hex(arr, offset=0, expected=None):
     result = ''
     i = offset
-    assert not expected % 2, "Must expect an even number of hex digits."
     if expected is not None:
+        assert not expected % 2, "Must expect an even number of hex digits."
         end = offset + (expected / 2)
     else:
         end = len(arr)
     while i < end:
-        result += '{:02x}'.format(arr[i]).upper()
+        result += '{:02X}'.format(arr[i]).upper()
         i += 1
     if expected is not None:
         if len(result) < expected:
