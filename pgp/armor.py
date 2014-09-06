@@ -239,7 +239,7 @@ class ASCIIArmor(object):
         result_lines.append('={0}'.format(checksum))
         result_lines.append(result_lines[0].replace('BEGIN', 'END'))
 
-        return '\n'.join(result_lines)
+        return '\n'.join(result_lines) + '\n'
 
     def __bytes__(self):
         return self.data

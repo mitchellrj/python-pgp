@@ -23,6 +23,7 @@ from Crypto.Hash import SHA
 
 from pgp.packets import constants
 from pgp.packets.signature_subpackets import signature_subpacket_from_data
+from pgp.packets.signature_subpackets import EmbeddedSignatureSubpacket
 from pgp.packets.user_attribute_subpackets import \
     user_attribute_subpacket_from_data
 from pgp import s2k
@@ -114,15 +115,17 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         #  card" or "speculative" Key ID.  In this case, the receiving
         #  implementation would try all available private keys, checking for a
         #  valid decrypted session key."
-        if key_id == '0' * 16:
+        if key_id == b'0' * 16:
             key_id = None
         offset += 8
         public_key_algorithm = int(data[offset])
         offset += 1
         data_len = len(data)
         encrypted_session_key = data[offset:]
-        return cls(header_format, version, key_id, public_key_algorithm,
-                   encrypted_session_key)
+        result = cls(header_format, version, key_id, public_key_algorithm,
+                     encrypted_session_key)
+        result._content = data
+        return result
 
     def __init__(self, header_format, version, key_id, public_key_algorithm,
                  encrypted_session_key):
@@ -189,6 +192,9 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
 
 
 class SignaturePacket(Packet):
+
+    def to_embedded_subpacket(self, critical=False):
+        return EmbeddedSignatureSubpacket(critical, self)
 
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
@@ -280,10 +286,12 @@ class SignaturePacket(Packet):
             mpi, offset = utils.mpi_to_int(data, offset)
             signature_values.append(mpi)
 
-        return cls(header_format, version, signature_type,
-                   public_key_algorithm, hash_algorithm, hash2,
-                   signature_values, creation_time, key_id, hashed_subpackets,
-                   unhashed_subpackets)
+        result = cls(header_format, version, signature_type,
+                     public_key_algorithm, hash_algorithm, hash2,
+                     signature_values, creation_time, key_id, hashed_subpackets,
+                     unhashed_subpackets)
+        result._content = data
+        return result
 
     @property
     def human_signature_type(self):
@@ -424,8 +432,10 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
             utils.symmetric_cipher_block_lengths.get(symmetric_algorithm)
         encrypted_session_key = \
             data[offset:offset + encrypted_session_key_length]
-        return cls(header_format, version, symmetric_algorithm,
-                   s2k_specification, encrypted_session_key)
+        result = cls(header_format, version, symmetric_algorithm,
+                     s2k_specification, encrypted_session_key)
+        result._content = data
+        return result
 
     def __init__(self, header_format, version, symmetric_algorithm,
                  s2k_specification, encrypted_session_key=None):
@@ -530,8 +540,10 @@ class OnePassSignaturePacket(Packet):
         offset += 8
         nested = data[offset]
         offset += 1
-        return cls(header_format, version, signature_type, hash_algorithm,
-                   public_key_algorithm, key_id, nested)
+        result = cls(header_format, version, signature_type, hash_algorithm,
+                     public_key_algorithm, key_id, nested)
+        result._content = data
+        return result
 
     def __init__(self, header_format, version, signature_type, hash_algorithm,
                  public_key_algorithm, key_id, nested):
@@ -616,7 +628,9 @@ class PublicKeyPacket(Packet):
     def from_packet_content(cls, header_format, type_, data):
         _offset, values = cls._values_from_packet_contents(data)
 
-        return cls(header_format, *values)
+        result = cls(header_format, *values)
+        result._content = data
+        return result
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
@@ -1027,7 +1041,9 @@ class CompressedDataPacket(Packet):
         while offset < packet_data_length:
             offset, packet = packet_from_packet_data(packet_data, offset)
             packets.append(packet)
-        return cls(header_format, compression_algorithm, packets)
+        result = cls(header_format, compression_algorithm, packets)
+        result._content = data
+        return result
 
     def __init__(self, header_format, compression_algorithm, packets=None):
         Packet.__init__(header_format, constants.COMPRESSED_DATA_PACKET_TYPE)
@@ -1062,7 +1078,9 @@ class SymmetricallyEncryptedDataPacket(Packet):
 
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
-        cls(header_format, data)
+        result = cls(header_format, data)
+        result._content = data
+        return result
 
     def __init__(self, header_format, data):
         Packet.__init__(self, header_format,
@@ -1086,7 +1104,9 @@ class MarkerPacket(Packet):
     def from_packet_content(cls, header_format, type_, data):
         old_literal = data != b'PGP'
 
-        return cls(header_format, data, old_literal)
+        result = cls(header_format, data, old_literal)
+        result._content = data
+        return result
 
     def __init__(self, header_format, content, old_literal=False):
         Packet.__init__(self, header_format, constants.MARKER_PACKET_TYPE)
@@ -1135,7 +1155,9 @@ class LiteralDataPacket(Packet):
         if data_format in (b't', b'u'):
             content.replace('\r\n', os.linesep)
 
-        return cls(header_format, data_format, filename, time, content)
+        result = cls(header_format, data_format, filename, time, content)
+        result._content = data
+        return result
 
     def __init__(self, header_format, data_format, filename, time, data):
         Packet.__init__(self, header_format,
@@ -1191,7 +1213,9 @@ class TrustPacket(Packet):
             if sig_cache & 0x80:
                 raise ValueError
 
-        return cls(header_format, trust_value, sig_cache)
+        result = cls(header_format, trust_value, sig_cache)
+        result._content = data
+        return result
 
     def __init__(self, header_format, trust_value, sig_cache=None):
         Packet.__init__(self, header_format, constants.TRUST_PACKET_TYPE)
@@ -1225,7 +1249,9 @@ class UserIDPacket(Packet):
 
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
-        return cls(header_format, data.decode('utf8', 'replace'))
+        result = cls(header_format, data.decode('utf8', 'replace'))
+        result._content = data
+        return result
 
     def __init__(self, header_format, user_id):
         Packet.__init__(self, header_format, constants.USER_ID_PACKET_TYPE)
@@ -1266,7 +1292,9 @@ class OldCommentPacket(Packet):
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
         comment = data.decode('utf8')
-        return cls(header_format, comment)
+        result = cls(header_format, comment)
+        result._content = data
+        return result
 
     def __init__(self, header_format, comment):
         Packet.__init__(self, header_format,
@@ -1299,7 +1327,9 @@ class UserAttributePacket(Packet):
                         )
             subpackets.append(sp)
 
-        return cls(header_format, subpackets)
+        result = cls(header_format, subpackets)
+        result._content = data
+        return result
 
     def __init__(self, header_format, subpackets):
         Packet.__init__(self, header_format,
@@ -1335,7 +1365,9 @@ class SymmetricallyEncryptedAndIntegrityProtectedDataPacket(Packet):
     def from_packet_content(cls, header_format, type_, data):
         version = int(data[0])
         encrypted_data = data[1:]
-        return cls(header_format, version, encrypted_data)
+        result = cls(header_format, version, encrypted_data)
+        result._content = data
+        return result
 
     def __init__(self, header_format, version, encrypted_data):
         Packet.__init__(self, header_format,
@@ -1362,7 +1394,9 @@ class ModificationDetectionCodePacket(Packet):
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
         assert len(data) == 20
-        return cls(header_format, data)
+        result = cls(header_format, data)
+        result._content = data
+        return result
 
     def __init__(self, header_format, data):
         Packet.__init__(self, header_format,
@@ -1408,7 +1442,9 @@ class GpgControlPacket(Packet):
         control = data[offset]
         offset += 1
         content_data = data[offset:]
-        return cls(header_format, session_marker, control, content_data)
+        result = cls(header_format, session_marker, control, content_data)
+        result._content = data
+        return result
 
     def __init__(self, header_format, session_marker, control, content_data):
         Packet.__init__(self, header_format,

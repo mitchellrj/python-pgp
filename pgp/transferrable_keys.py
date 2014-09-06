@@ -20,7 +20,6 @@ import math
 import time
 import weakref
 
-from Crypto.Hash import MD5
 from Crypto.Hash import SHA
 import magic
 from zope.interface import implementer
@@ -59,6 +58,7 @@ class BasePublicKey(object):
     _self_sig_type = C.SIGNATURE_DIRECTLY_ON_A_KEY
     _revocation_sig_type = C.KEY_REVOCATION_SIGNATURE
     _PacketClass = packets.PublicKeyPacket
+    packet_header_type = C.NEW_PACKET_HEADER_TYPE
 
     @classmethod
     def _init_args_from_packet(cls, packet):
@@ -86,9 +86,11 @@ class BasePublicKey(object):
     @classmethod
     def from_packet(cls, packet):
         args = cls._init_args_from_packet(packet)
-        return cls(*args)
+        result = cls(*args)
+        result.packet_header_type = packet.header_format
+        return result
 
-    def _to_packet_args(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def _to_packet_args(self, header_format=None):
         creation_time = int(time.mktime(self.creation_time.timetuple()))
         expiration_days = None
         if self.version < 4:
@@ -103,7 +105,9 @@ class BasePublicKey(object):
             self.group_order_q, self.key_value_y
             )
 
-    def to_packet(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def to_packet(self, header_format=None):
+        if header_format is None:
+            header_format = self.packet_header_type
         args = self._to_packet_args(header_format)
         return self._PacketClass(*args)
 
@@ -366,7 +370,7 @@ class BaseSecretKey(BasePublicKey):
         key.subkeys = map(lambda k: k.to_public_key(), self.subkeys)
         return key
 
-    def _to_packet_args(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def _to_packet_args(self, header_format=None):
         args = BasePublicKey._to_packet_args(self, header_format)
         args += (self.s2k_specification, self.symmetric_algorithm, self.iv,
                  self.encrypted_portion, self.checksum, self.hash)
@@ -426,7 +430,9 @@ class PublicSubkey(BasePublicKey):
     @classmethod
     def from_packet(cls, primary_public_key, packet):
         args = cls._init_args_from_packet(packet)
-        return cls(primary_public_key, *args)
+        result = cls(primary_public_key, *args)
+        result.packet_header_type = packet.header_format
+        return result
 
     def __init__(self, primary_public_key, *args, **kwargs):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
@@ -451,12 +457,17 @@ class SecretSubkey(PublicSubkey, BaseSecretKey):
 class UserID(object):
 
     signatures = None
+    packet_header_type = C.NEW_PACKET_HEADER_TYPE
 
     @classmethod
     def from_packet(cls, primary_public_key, packet):
-        return cls(primary_public_key, packet.user_id, [])
+        result = cls(primary_public_key, packet.user_id, [])
+        result.packet_header_type = packet.header_format
+        return result
 
-    def to_packet(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def to_packet(self, header_format=None):
+        if header_format is None:
+            header_format = self.packet_header_type
         return packets.UserIDPacket(header_format, self.user_id)
 
     def __init__(self, primary_public_key, user_id, signatures=None):
@@ -552,16 +563,21 @@ class UserAttribute(object):
 
     content_items = None
     signatures = None
+    packet_header_type = C.NEW_PACKET_HEADER_TYPE
 
     @classmethod
     def from_packet(cls, primary_public_key, packet):
         content_items = []
         for sp in packet.subpackets:
             content_items.append(UserAttributeContentItem.from_subpacket(sp))
-        return cls(primary_public_key, content_items)
+        result = cls(primary_public_key, content_items)
+        result.packet_header_type = packet.header_format
+        return result
 
-    def to_packet(self, header_format=C.NEW_PACKET_HEADER_TYPE):
+    def to_packet(self, header_format=None):
         subpackets = []
+        if header_format is None:
+            header_format = self.packet_header_type
         for item in self.content_items:
             subpackets.append(item.to_packet(header_format))
         return packets.UserAttributePacket(header_format, subpackets)
@@ -775,7 +791,7 @@ class TransferablePublicKey(BasePublicKey):
 
         return primary_public_key
 
-    def to_packets(self, header_format):
+    def to_packets(self, header_format=None):
         packets = []
         packets.append(self.to_packet(header_format))
         for sig in self.signatures:
