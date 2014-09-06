@@ -6,8 +6,8 @@ Functionality in priority order.
 Keys
 ----
 
- * Generate a key pair
  * Verify a signature
+ * Generate a key pair
  * Sign data
  * Encrypt data
  * Decrypt data
