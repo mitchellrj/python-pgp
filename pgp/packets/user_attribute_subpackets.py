@@ -88,7 +88,7 @@ class ImageAttributeSubpacket(UserAttributeSubpacket):
                 ])
         if self.image_format is not None:
             result.append(self.image_format)
-            result.extend([0] * self.header_length - 1)
+            result.extend([0] * (self.header_length - 1))
         else:
             result.extend([0] * self.header_length)
         result.extend(self.data)

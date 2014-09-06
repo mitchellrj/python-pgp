@@ -23,9 +23,9 @@ class SimpleS2K(object):
         self.count = 1
 
     def __bytes__(self):
-        return bytearray([self.hash_algorithm]) + bytearray(self.salt)
+        return bytes(bytearray([self.hash_algorithm]) + bytearray(self.salt))
 
-    def make_hash(self, passphrase):
+    def to_key(self, passphrase):
         required_length = utils.symmetric_cipher_block_lengths.get(
                             self.symmetric_algorithm
                         )
@@ -96,7 +96,7 @@ class IteratedAndSaltedS2K(SaltedS2K):
 
     def __bytes__(self):
         result = SaltedS2K.__bytes__(self)
-        result.append(utils.int_to_s2k_count(self.count))
+        result += bytes(utils.int_to_s2k_count(self.count))
         return result
 
 
@@ -156,7 +156,7 @@ class GnuPGS2K(SimpleS2K):
         self.serial_number = serial_number
         self.serial_number_length = serial_number_length
 
-    def make_hash(self, passphrase):
+    def to_key(self, passphrase):
         # TODO: complete OpenPGP card & GnuPG dummy s2k
         pass
 
@@ -170,7 +170,7 @@ class GnuPGS2K(SimpleS2K):
             result.append(self.serial_number_length)
             result.extend(utils.hex_to_bytes(self.serial_number,
                                              self.serial_number_length))
-        return result
+        return bytes(result)
 
 
 S2K_TYPES = {

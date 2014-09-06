@@ -102,6 +102,18 @@ class ISignature(Interface):
     supports_modification_detection = Attribute("bool")
 
 
+class IUnlockable(Interface):
+
+    def unlock(self, passphrase):
+        pass
+
+    def lock(self, passphrase):
+        pass
+
+    def is_locked(self):
+        pass
+
+
 class ISignable(Interface):
 
     signatures = Attribute("List of ISignature")
@@ -159,13 +171,23 @@ class IPublicKey(ISignable):
                         "public key. Used by agents.")
 
 
-class ISecretKey(IPublicKey):
+class ISecretKey(IPublicKey, IUnlockable):
 
     s2k_specification = Attribute("IS2KSpecification")
     symmetric_algorithm = Attribute("int")
     iv = Attribute("bytes")
     encrypted_portion = Attribute("bytes")
-    checksum = Attribute("bytes")
+    checksum = Attribute("int")
+    hash = Attribute("bytes")
+
+    # RSA
+    exponent_d = Attribute("int")
+    prime_p = Attribute("int")
+    prime_q = Attribute("int")
+    multiplicative_inverse_u = Attribute("int")
+
+    # DSA / Elg
+    exponent_x = Attribute("int")
 
 
 class IUserID(ISignable):

@@ -14,8 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import math
 import os
 import warnings
+
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.Hash import SHA
 
 from pgp.packets import constants
 from pgp.packets.signature_subpackets import signature_subpacket_from_data
@@ -40,9 +44,10 @@ class Packet(object):
         """
         return cls(header_format, type_, content)
 
-    def __init__(self, header_format, type_):
+    def __init__(self, header_format, type_, content=None):
         self.header_format = header_format
         self.type = type_
+        self._content = content or bytearray()
 
     def __repr__(self):
         return '<{0} at 0x{1:x}>'.format(self.__class__.__name__,
@@ -50,7 +55,7 @@ class Packet(object):
 
     @property
     def content(self):
-        return bytearray()
+        return bytearray(self._content)
 
     def get_content_for_signature_hash(self, signature_version):
         return self.content
@@ -98,31 +103,67 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         version = int(data[offset])
         offset += 1
         key_id = utils.bytearray_to_hex(data, offset, 8)
+        # "An implementation MAY accept or use a Key ID of zero as a "wild
+        #  card" or "speculative" Key ID.  In this case, the receiving
+        #  implementation would try all available private keys, checking for a
+        #  valid decrypted session key."
+        if key_id == '0' * 16:
+            key_id = None
         offset += 8
         public_key_algorithm = int(data[offset])
         offset += 1
         data_len = len(data)
-        session_key_values = []
-        while offset < data_len:
-            mpi, offset = utils.mpi_to_int(data, offset)
-            session_key_values.append(mpi)
+        encrypted_session_key = data[offset:]
         return cls(header_format, version, key_id, public_key_algorithm,
-                   session_key_values)
+                   encrypted_session_key)
 
     def __init__(self, header_format, version, key_id, public_key_algorithm,
-                 session_key_values):
+                 encrypted_session_key):
         Packet.__init__(self, header_format,
                     constants.PUBLIC_KEY_ENCRYPTED_SESSION_KEY_PACKET_TYPE)
         self.version = version
-        self.key_id = key_id,
+        self.key_id = key_id
         self.public_key_algorithm = public_key_algorithm
-        self.session_key_values = session_key_values
+        self.encrypted_session_key = encrypted_session_key
+
+    @classmethod
+    def _get_key_and_cipher_algo(cls, secret_key_obj, encrypted_session_key):
+        cipher = PKCS1_v1_5.new(secret_key_obj)
+        encrypted_session_key_length = len(encrypted_session_key)
+        decrypted_values = []
+        offset = 1
+        while offset < (encrypted_session_key_length - 2):
+            mpi, offset = utils.mpi_to_int(encrypted_session_key, offset)
+            decrypted_values.append(cipher.decrypt(mpi))
+        decrypted_data_length = len(decrypted_values)
+        symmetric_algorithm = int(decrypted_values[0])
+        expected_checksum = (
+                (decrypted_values[-2] << 8) +
+                decrypted_values[-1]
+                )
+        actual_checksum = sum(decrypted_values[1:-2]) & 0xffff
+        if expected_checksum != actual_checksum:
+            raise ValueError
+
+
+    @classmethod
+    def _decrypt_(cls):
+        # "First, the session key is prefixed with a one-octet algorithm
+        #  identifier that specifies the symmetric encryption algorithm used
+        #  to encrypt the following Symmetrically Encrypted Data Packet. Then
+        #  a two-octet checksum is appended, which is equal to the sum of the
+        #  preceding session key octets, not including the algorithm
+        #  identifier, modulo 65536."
+        pass
 
     @property
     def content(self):
+        key_id = self.key_id
+        if key_id is None:
+            key_id = '0' * 16
         data = bytearray(
                         [self.version] +
-                        utils.hex_to_bytes(self.key_id, 8) +
+                        utils.hex_to_bytes(key_id, 8) +
                         [self.public_key_algorithm]
                     )
         for value in self.session_key_values:
@@ -228,10 +269,16 @@ class SignaturePacket(Packet):
                    signature_values, creation_time, key_id, hashed_subpackets,
                    unhashed_subpackets)
 
+    @property
+    def human_signature_type(self):
+        return constants.human_signature_types.get(self.signature_type, 'Unknown')
+
     def __repr__(self):
-        return '<{0} 0x{1:02x} at 0x{2:x}>'.format(self.__class__.__name__,
-                                                   self.signature_type,
-                                                   id(self))
+        return '<{0} 0x{1:02x} ({2}) at 0x{3:x}>'.format(
+            self.__class__.__name__,
+            self.signature_type,
+            self.human_signature_type,
+            id(self))
 
     def __init__(self, header_format, version, signature_type,
                  public_key_algorithm, hash_algorithm, hash2,
@@ -339,29 +386,86 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
         offset += 1
         symmetric_algorithm = int(data[offset])
         offset += 1
-        s2k_specifier, offset = s2k.parse_s2k_bytes(symmetric_algorithm, data,
-                                              offset)
+        s2k_specification, offset = s2k.parse_s2k_bytes(symmetric_algorithm,
+                                                        data,
+                                                        offset)
         encrypted_session_key_length = \
             utils.symmetric_cipher_block_lengths.get(symmetric_algorithm)
         encrypted_session_key = \
             data[offset:offset + encrypted_session_key_length]
-        return cls(header_format, version, symmetric_algorithm, s2k_specifier,
-                   encrypted_session_key)
+        return cls(header_format, version, symmetric_algorithm,
+                   s2k_specification, encrypted_session_key)
 
     def __init__(self, header_format, version, symmetric_algorithm,
-                 s2k_specifier, encrypted_session_key=None):
+                 s2k_specification, encrypted_session_key=None):
         Packet.__init__(self, header_format,
                     constants.PUBLIC_KEY_ENCRYPTED_SESSION_KEY_PACKET_TYPE)
         self.version = version
-        self.symmetric_algorithm = symmetric_algorithm,
-        self.s2k_specifier = s2k_specifier
+        self.symmetric_algorithm = symmetric_algorithm
+        self.s2k_specification = s2k_specification
         self.encrypted_session_key = encrypted_session_key
+
+    def get_key_and_cipher_algo(self, passphrase):
+        return self._get_key_and_cipher_algo(self.s2k_specification,
+                                             self.symmetric_algorithm,
+                                             passphrase,
+                                             self.encrypted_session_key)
+
+    @classmethod
+    def _get_key_and_cipher_algo(cls, s2k_specification, symmetric_algorithm,
+                                 passphrase, encrypted_session_key=None):
+        # "If the encrypted session key is not present (which can be detected
+        #  on the basis of packet length and S2K specifier size), then the S2K
+        #  algorithm applied to the passphrase produces the session key for
+        #  decrypting the file, using the symmetric cipher algorithm from the
+        #  Symmetric-Key Encrypted Session Key packet."
+        key = s2k_specification.to_key(passphrase)
+        symmetric_algorithm = symmetric_algorithm
+
+        # "If the encrypted session key is present, the result of applying the
+        #  S2K algorithm to the passphrase is used to decrypt just that
+        #  encrypted session key field, using CFB mode with an IV of all
+        #  zeros. The decryption result consists of a one-octet algorithm
+        #  identifier that specifies the symmetric-key encryption algorithm
+        #  used to encrypt the following Symmetrically Encrypted Data packet,
+        #  followed by the session key octets themselves."
+        if encrypted_session_key:
+            block_size = utils.symmetric_cipher_block_lengths.get(
+                                symmetric_algorithm)
+            iv = bytearray([0] * block_size)
+            cipher = utils.get_symmetric_cipher(
+                        symmetric_algorithm, key, utils.OPENPGP, iv)
+            decrypted_data = bytearray(cipher.decrypt(encrypted_session_key))
+            symmetric_algorithm = decrypted_data[0]
+            key = bytes(decrypted_data[1:])
+
+        return key, symmetric_algorithm
+
+    @classmethod
+    def _decrypt_packet_data(cls, key, symmetric_algorithm, data):
+        block_size = utils.symmetric_cipher_block_lengths.get(
+                            symmetric_algorithm)
+        iv = bytearray([0] * block_size)
+        cipher = utils.get_symmetric_cipher(
+                    symmetric_algorithm, key, utils.OPENPGP, iv)
+        decrypted_data = cipher.decrypt(data)
+        pkts = []
+        offset = 0
+        data_length = len(decrypted_data)
+        while offset < data_length:
+            packet, offset = packet_from_packet_data(decrypted_data, offset)
+            pkts.append(packet)
+        return pkts
+
+    def decrypt_packet_data(self, passphrase, data):
+        key, symmetric_algorithm = self.get_key_and_cipher_algo(passphrase)
+        return self._decrypt_packet_data(key, symmetric_algorithm, data)
 
     @property
     def content(self):
         data = bytearray(
                         [self.version, self.symmetric_algorithm] +
-                        bytes(self.s2k_specifier)
+                        bytes(self.s2k_specification)
                     )
         if self.encrypted_session_key is not None:
             data.extend(self.encrypted_session_key)
@@ -451,7 +555,7 @@ class PublicKeyPacket(Packet):
             group_generator, offset = utils.mpi_to_int(data, offset)
             key_value, offset = utils.mpi_to_int(data, offset)
         else:
-            raise NotImplemented
+            raise NotImplementedError('Unknown public key algorithm {0}'.format(public_key_algorithm))
 
         return offset, (
                 version, creation_time, public_key_algorithm, expiration_days,
@@ -481,7 +585,7 @@ class PublicKeyPacket(Packet):
         self.key_value = key_value
 
     @property
-    def content(self):
+    def public_content(self):
         data = bytearray([self.version])
         data.extend(utils.int_to_4byte(self.creation_time))
         if self.version in (2, 3):
@@ -510,12 +614,20 @@ class PublicKeyPacket(Packet):
 
         return data
 
+    @property
+    def content(self):
+        return self.public_content
+
     def get_content_for_signature_hash(self, signature_version):
         key_data = self.content
         result = bytearray([0x99])
         result.extend(utils.int_to_2byte(len(key_data)))
         result.extend(key_data)
         return result
+
+    @property
+    def fingerprint(self):
+        return utils.key_packet_fingerprint(self)
 
 
 class PublicSubkeyPacket(PublicKeyPacket):
@@ -568,13 +680,19 @@ class SecretKeyPacket(PublicKeyPacket):
 
         if s2k_usage in (0, 255):
             encrypted_portion = data[offset:-2]
-            checksum = data[-2:]
+            checksum = (data[-2] << 8) + data[-1]
+            hash_ = None
+        elif s2k_usage == 254:
+            encrypted_portion = data[offset:-20]
+            hash_ = data[-20:]
+            checksum = None
         else:
             encrypted_portion = data[offset:]
             checksum = None
+            hash_ = None
 
         values += (s2k_specification, symmetric_algorithm, iv,
-                   encrypted_portion, checksum)
+                   encrypted_portion, checksum, hash_)
         return offset, values
 
     def __init__(self, header_type, version, creation_time,
@@ -582,7 +700,9 @@ class SecretKeyPacket(PublicKeyPacket):
                  exponent=None, prime=None, group_generator=None,
                  group_order=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
-                 checksum=None):
+                 checksum=None, hash_=None, passphrase=None, exponent_d=None,
+                 prime_p=None, prime_q=None, multiplicative_inverse_u=None,
+                 exponent_x=None):
 
         if None in (s2k_specification, iv, encrypted_portion):
             raise ValueError
@@ -602,10 +722,134 @@ class SecretKeyPacket(PublicKeyPacket):
         self.iv = iv
         self.encrypted_portion = encrypted_portion
         self.checksum = checksum
+        self.hash = hash_
+        self.passphrase = passphrase
+        self.exponent_d = exponent_d
+        self.prime_p = prime_p
+        self.prime_q = prime_q
+        self.multiplicative_inverse_u = multiplicative_inverse_u
+        self.exponent_x = exponent_x
+
+    def decrypt(self, passphrase):
+        if self.s2k_specification is not None:
+            key = self.s2k_specification.to_key(passphrase)
+        else:
+            key = passphrase
+        values = self.decrypt_encrypted_key_portion(
+                    self.version, key, self.symmetric_algorithm, self.iv,
+                    self.encrypted_portion, self.checksum, self.hash)
+
+        if self.public_key_algorithm in (1, 2, 3):
+            # RSA
+            self.exponent_d = values[0]
+            self.prime_p = values[1]
+            self.prime_q = values[2]
+            self.multiplicative_inverse_u = values[3]
+        elif self.public_key_algorithm in (16, 17, 20):
+            # DSA & Elg
+            self.exponent_x = values[0]
+        else:
+            raise ValueError
+
+    @classmethod
+    def encrypt_key_values(cls, version, values, key, symmetric_algorithm,
+                           iv):
+
+        cipher = utils.get_symmetric_cipher(
+                    symmetric_algorithm, key, utils.OPENPGP, iv,
+                    syncable=True)
+
+        unencrypted_data = bytearray()
+        for value in values:
+            unencrypted_data.extend(utils.int_to_mpi(value))
+
+        if version >= 4:
+            encrypted_data = cipher.encrypt(unencrypted_data)
+        elif version in (2, 3):
+            encrypted_data = bytearray()
+            for i in values:
+                bits_required = int(math.floor(float(math.log(i, 2)))) + 1
+                bytes_required = int(math.ceil(bits_required / 8.0))
+                encrypted_data.extend(utils.int_to_2byte(bytes_required))
+                cipher.sync()
+                mpi_value_bytes = utils.int_to_bytes(i)
+                if len(mpi_value_bytes) < bytes_required:
+                    mpi_value_bytes = bytearray(
+                            [0] * (bytes_required - len(mpi_value_bytes))
+                        ) + mpi_value_bytes
+                encrypted_data.extend(cipher.encrypt(mpi_value_bytes))
+
+        checksum = sum(unencrypted_data) & 0xffff
+        if version >= 4:
+            checksum = utils.short_to_int(cipher.encrypt(
+                            utils.int_to_2byte(checksum)), 0)
+
+        hash_ = SHA.new(unencrypted_data).digest()
+        return encrypted_data, checksum, hash_
+
+    @classmethod
+    def decrypt_encrypted_key_portion(cls, version, key, symmetric_algorithm,
+                                      iv, encrypted_data,
+                                      expected_checksum=None,
+                                      expected_hash=None):
+
+        if version >= 4:
+            cipher = utils.get_symmetric_cipher(
+                        symmetric_algorithm, key, utils.OPENPGP, iv)
+            decrypted_data = cipher.decrypt(encrypted_data)
+        elif version in (2, 3):
+            # "With V3 keys, the MPI bit count prefix (i.e., the first two
+            #  octets) is not encrypted.  Only the MPI non-prefix data is
+            #  encrypted.  Furthermore, the CFB state is resynchronized at the
+            #  beginning of each new MPI value, so that the CFB block boundary
+            #  is aligned with the start of the MPI data."
+
+            cipher = utils.get_symmetric_cipher(
+                        symmetric_algorithm, key, utils.OPENPGP, iv,
+                        syncable=True)
+            offset = 0
+            decrypted_data = bytearray()
+            while offset < len(encrypted_data):
+                cipher.sync()
+                decrypted_data.extend(
+                        encrypted_data[offset:offset + 2])
+                mpi_length = utils.mpi_length(encrypted_data, offset)
+                offset += 2
+                encrypted_mpi_content = \
+                    encrypted_data[offset:offset + mpi_length]
+                offset += mpi_length
+                mpi_content = cipher.decrypt(encrypted_mpi_content)
+                decrypted_data.extend(mpi_content)
+        else:
+            raise ValueError
+
+        if expected_checksum is not None:
+            if version >= 4:
+                # With V4 keys, the checksum is encrypted like the
+                # algorithm-specific data.
+                expected_checksum = utils.short_to_int(
+                        cipher.decrypt(utils.int_to_2byte(expected_checksum))
+                    )
+            actual_checksum = sum(decrypted_data) & 0xffff
+            if actual_checksum != expected_checksum:
+                raise ValueError
+
+        if expected_hash is not None:
+            actual_hash = SHA.new(decrypted_data).digest()
+            if expected_hash != actual_hash:
+                raise ValueError
+
+        values = []
+        offset = 0
+        while offset < len(decrypted_data):
+            mpi, offset = utils.mpi_to_int(decrypted_data, offset)
+            values.append(mpi)
+
+        return values
 
     @property
     def content(self):
-        data = PublicKeyPacket.content
+        data = PublicKeyPacket.content.__get__(self)
         if self.s2k_specification is not None:
             if self.checksum is not None:
                 s2k_usage = 255
@@ -617,9 +861,41 @@ class SecretKeyPacket(PublicKeyPacket):
             data.extend(bytes(self.s2k_specification))
         if self.symmetric_algorithm != 0:
             data.extend(self.iv)
-        data.extend(self.encrypted_portion)
-        if self.checksum is not None:
-            data.extend(self.checksum)
+        if self.encrypted_portion:
+            data.extend(self.encrypted_portion)
+            if self.checksum is not None:
+                data.extend([
+                    self.checksum >> 8,
+                    self.checksum & 0xff
+                    ])
+            elif self.hash is not None:
+                data.extend(self.hash)
+        else:
+            if self.public_key_algorithm in (1, 2, 3):
+                values = [
+                    self.exponent_d,
+                    self.prime_p,
+                    self.prime_q,
+                    self.multiplicative_inverse_u
+                    ]
+            elif self.public_key_algorithm in (16, 17, 20):
+                values = [self.exponent_x]
+            else:
+                raise ValueError
+
+            if self.s2k_specification is not None:
+                key = self.s2k_specification.to_key(self.passphrase)
+            else:
+                key = self.passphrase
+            encrypted_data, checksum, hash_ = self.encrypt_key_values(
+                        self.version, values, key, self.symmetric_algorithm,
+                        self.iv)
+            data.extend(encrypted_data)
+            if s2k_usage in (0, 255):
+                data.extend(utils.int_to_2byte(checksum))
+            if s2k_usage == 254:
+                data.extend(hash_)
+
         return data
 
 
@@ -630,7 +906,9 @@ class SecretSubkeyPacket(SecretKeyPacket):
                  exponent=None, prime=None, group_generator=None,
                  group_order=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
-                 checksum=None):
+                 checksum=None, hash_=None, passphrase=None, exponent_d=None,
+                 prime_p=None, prime_q=None, multiplicative_inverse_u=None,
+                 exponent_x=None):
 
         if None in (s2k_specification, iv, encrypted_portion):
             raise ValueError
@@ -659,17 +937,36 @@ class CompressedDataPacket(Packet):
     def from_packet_content(cls, header_format, type_, data):
         compression_algorithm = int(data[0])
         compressed_data = data[1:]
-        return cls(header_format, compression_algorithm, compressed_data)
+        algo = utils.get_compression_instance(compression_algorithm)
+        packet_data = algo.decompress(compressed_data)
+        packet_data += algo.flush()
+        packet_data_length = len(packet_data)
+        packets = []
+        offset = 0
+        while offset < packet_data_length:
+            offset, packet = packet_from_packet_data(packet_data, offset)
+            packets.append(packet)
+        return cls(header_format, compression_algorithm, packets)
 
-    def __init__(self, header_format, compression_algorithm, compressed_data):
+    def __init__(self, header_format, compression_algorithm, packets=None):
         Packet.__init__(header_format, constants.COMPRESSED_DATA_PACKET_TYPE)
         self.compression_algorithm = compression_algorithm
-        self.compressed_data = compressed_data
+        if packets is None:
+            packets = []
+        self.packets = packets
 
     @property
     def content(self):
         data = bytearray([self.compression_algorithm])
-        data.extend(self.compressed_data)
+
+        packet_data = bytearray()
+        for packet in self.packets:
+            packet_data.extend(bytes(packet))
+
+        algo = utils.get_compression_instance(self.compression_algorithm)
+        data.extend(algo.compress(packet_data))
+        data.extend(algo.flush())
+
         return data
 
 
@@ -693,7 +990,7 @@ class MarkerPacket(Packet):
 
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
-        old_literal = data.decode('utf8', 'replace') != u'PGP'
+        old_literal = data != b'PGP'
 
         return cls(header_format, data, old_literal)
 
@@ -742,7 +1039,7 @@ class LiteralDataPacket(Packet):
         Packet.__init__(self, header_format,
                         constants.LITERAL_DATA_PACKET_TYPE)
         self.data_format = data_format
-        self.filename = self.filename
+        self.filename = filename
         self.time = time
         self.data = data
 
@@ -791,6 +1088,14 @@ class TrustPacket(Packet):
         self.sig_cache = sig_cache
 
     @property
+    def checked(self):
+        return bool(self.sig_cache & 1)
+
+    @property
+    def valid(self):
+        return bool(self.sig_cache & 2)
+
+    @property
     def content(self):
         data = bytearray([self.trust_value])
         if self.sig_cache is not None:
@@ -801,7 +1106,7 @@ class TrustPacket(Packet):
 class UserIDPacket(Packet):
 
     @classmethod
-    def from_packet_content(cls, header_format, type_, data):
+    def from_packet_content(cls, header_format, data):
         return cls(header_format, data.decode('utf8', 'replace'))
 
     def __init__(self, header_format, user_id):
@@ -1001,6 +1306,50 @@ PACKET_TYPES = {
     constants.GPG_COMMENT_PACKET_TYPE: GpgCommentPacket,
     constants.GPG_CONTROL_PACKET_TYPE: GpgControlPacket,
     }
+
+
+def packet_from_packet_stream(fh):
+    """Parse a packet from the given data starting at the offset
+    and return a tuple of the length of data consumed and a packet
+    object.
+    """
+
+    packet_data = bytearray()
+    incomplete = True
+    previous_tag = None
+    previous_header_type = None
+    while incomplete:
+        first = ord(fh.read(1))
+        tag = first & 0x3f
+        if previous_tag is not None:
+            if tag != previous_tag:
+                # TODO: complete message
+                raise ValueError()
+        previous_tag = tag
+        header_type = (
+                constants.NEW_PACKET_HEADER_TYPE
+                if bool(first & 0x40)
+                else constants.OLD_PACKET_HEADER_TYPE
+            )
+        if previous_header_type is not None:
+            if header_type != previous_header_type:
+                # TODO: complete message
+                raise ValueError()
+        if header_type == constants.NEW_PACKET_HEADER_TYPE:
+            data_length, incomplete = \
+                utils.new_packet_length_from_stream(fh)
+        else:
+            tag >>= 2
+            fh.seek(fh.tell() - 1)
+            data_length = utils.old_packet_length_from_stream(fh)
+            incomplete = False
+
+        packet_data.extend(fh.read(data_length))
+
+    cls = PACKET_TYPES.get(tag, Packet)
+
+    packet = cls.from_packet_content(header_type, tag, packet_data)
+    return packet
 
 
 def packet_from_packet_data(data, offset=0):

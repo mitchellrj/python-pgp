@@ -14,35 +14,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import absolute_import
 
-from pgp.cipher import aidea
+class LockingContextManager(object):
 
-__all__ = ['aidea', 'camellia', 'twofish']
+    def __init__(self, lockable, passphrase):
+        self.lockable = lockable
+        self.passphrase = passphrase
 
+    def __enter__(self):
+        self.lockable.unlock(self.passphrase)
+        return self.lockable
 
-try:
-    import camcrypt
-    camcrypt.CamCrypt()
-    HAS_CAMELLIA = True
-except (ImportError, OSError):
-    HAS_CAMELLIA = False
-
-
-try:
-    import twofish as _twofish
-    HAS_TWOFISH = True
-except ImportError:
-    HAS_TWOFISH = False
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.lockable.lock()
+        return False
 
 
-if HAS_CAMELLIA:
-    from pgp.cipher import camellia
-else:
-    camellia = None
-
-
-if HAS_TWOFISH:
-    from pgp.cipher import twofish
-else:
-    twofish = None
+def unlocked(lockable, passphrase):
+    return LockingContextManager(lockable, passphrase)

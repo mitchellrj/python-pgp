@@ -14,8 +14,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import bz2
 import math
+import zlib
 
+from Crypto.Cipher import blockalgo
+from Crypto.Cipher import AES
+from Crypto.Cipher import Blowfish
+from Crypto.Cipher import DES3
+from Crypto.Cipher import CAST
 from Crypto.Hash import MD5
 from Crypto.Hash import RIPEMD
 from Crypto.Hash import SHA
@@ -32,6 +39,10 @@ from Crypto.Util.number import bytes_to_long
 from Crypto.Util.number import GCD
 from Crypto.Util.number import long_to_bytes
 
+from pgp.cipher import aidea
+from pgp.cipher import camellia
+from pgp.cipher import twofish
+from pgp.cipher import wrapper as syncable_cipher_wrapper
 from pgp.exceptions import PublicKeyAlgorithmCannotSign
 from pgp.exceptions import UnsupportedDigestAlgorithm
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
@@ -195,6 +206,189 @@ def get_public_key_constructor(type_):
         raise UnsupportedPublicKeyAlgorithm(type_)
 
 
+class NoopCipher():
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def encrypt(self, block):
+        return block
+
+    def decrypt(self, block):
+        return block
+
+
+ECB = blockalgo.MODE_ECB
+CBC = blockalgo.MODE_CBC
+CFB = blockalgo.MODE_CFB
+OFB = blockalgo.MODE_OFB
+CTR = blockalgo.MODE_CTR
+OPENPGP = blockalgo.MODE_OPENPGP
+
+
+def get_symmetric_cipher(type_, key, mode, iv=None, segment_size=None,
+                         syncable=False):
+    """
+    """
+
+    if mode == ECB:
+        mode = blockalgo.MODE_ECB
+    elif mode == CBC:
+        mode = blockalgo.MODE_CBC
+    elif mode == CFB:
+        mode = blockalgo.MODE_CFB
+    elif mode == OFB:
+        mode = blockalgo.MODE_OFB
+    elif mode == CTR:
+        mode = blockalgo.MODE_CTR
+    elif mode == OPENPGP:
+        mode = blockalgo.MODE_OPENPGP
+
+    cipher = {
+        0: NoopCipher,
+        1: aidea,
+        2: DES3,
+        3: CAST,
+        4: Blowfish,
+        7: AES,
+        8: AES,
+        9: AES,
+        10: twofish,
+        # RFC 5581
+        11: camellia,
+        12: camellia,
+        13: camellia,
+        }.get(type_, None)
+
+    if syncable and cipher not in (aidea, twofish, camellia):
+        # We need to wrap the PyCrypto implementation so we can re-sync
+        # for OpenPGP's weird CFB mode.
+        return syncable_cipher_wrapper.new(cipher, key, mode, IV=iv,
+                                           segment_size=segment_size)
+
+    return cipher.new(key, mode, IV=iv, segment_size=segment_size)
+
+
+class NoopCompression(object):
+
+    def compress(self, data):
+        return data
+
+    def decompress(self, data):
+        return data
+
+    def flush(self):
+        return b''
+
+
+class ZlibCompression(object):
+
+    def __init__(self):
+        self._obj = None
+        self._compress = None
+        self._result = b''
+
+    def compress(self, data):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        if self._compress is False:
+            raise ValueError
+        if self._obj is None:
+            self._compress = True
+            self._obj = zlib.compressobj()
+            self._result += self._obj.compress(data)
+        return b''
+
+    def decompress(self, data):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        if self._compress is True:
+            raise ValueError
+        if self._obj is None:
+            self._compress = False
+            self._obj = zlib.decompressobj()
+        self._result += self._obj.decompress(data)
+        return b''
+
+    def flush(self):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        result = self._result
+        result += self._obj.flush()
+        self._result = None
+        return result
+
+
+_CompressionObj = zlib.compressobj().__class__
+_DecompressionObj = zlib.decompressobj().__class__
+
+
+class DeflateCompression(object):
+
+    def __init__(self):
+        self._obj = None
+        self._compress = None
+        self._result = b''
+
+    def compress(self, data):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        if self._compress is False:
+            raise ValueError
+        if self._obj is None:
+            self._compress = True
+            self._obj = zlib.compressobj()
+        self._result += self._obj.compress(data)
+        return b''
+
+    def decompress(self, data):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        if self._compress is True:
+            raise ValueError
+        if self._obj is None:
+            self._compress = False
+            self._obj = zlib.decompressobj()
+            # Fake header
+            self._obj.decompress(b'\x78\x9c')
+        self._result += self._obj.decompress(data)
+        return b''
+
+    def flush(self):
+        if self._result is None:
+            # already flushed
+            raise ValueError
+        result = self._result
+        result += self._obj.flush()
+        self._result = None
+        if self._compress:
+            # Discard header and checksum
+            result = result[2:-4]
+        return result
+
+
+def get_compression_instance(type_):
+
+    instance = None
+    if type_ == 0:
+        instance = NoopCompression()
+    elif type_ == 1:
+        # DEFLATE - RFC 1951
+        instance = DeflateCompression()
+    elif type_ == 2:
+        # ZLIB - RFC 1950
+        raise ZlibCompression()
+    elif type_ == 3:
+        instance = bz2.BZ2Compressor()
+
+    return instance
+
+
 def hash_key(hash_, key_packet_data):
     """Adds key data to a hash for signature comparison."""
 
@@ -302,15 +496,15 @@ def long_to_int(bytes_, offset):
     return bytes_to_int(bytes_, offset, 4)
 
 
-def mpi_to_int(bytes_, offset):
+def mpi_length(bytes_, offset):
     mpi_bit_length = short_to_int(bytes_, offset)
-    offset += 2
-    mpi_byte_length = int(math.ceil(mpi_bit_length / 8.0))
-    result = 0
-    for i in range(mpi_byte_length):
-        shift = (mpi_byte_length - i - 1) * 8
-        result += bytes_[offset + i] << shift
+    return int(math.ceil(mpi_bit_length / 8.0))
 
+
+def mpi_to_int(bytes_, offset):
+    mpi_byte_length = mpi_length(bytes_, offset)
+    offset += 2
+    result = bytes_to_int(bytes_, offset, mpi_byte_length)
     offset += mpi_byte_length
     return result, offset
 
@@ -411,6 +605,20 @@ def int_to_mpi(i):
 MAX_PACKET_LENGTH = 4294967295
 
 
+def old_packet_length_from_stream(fh):
+    length_type = ord(fh.read(1)) & 0x03
+    if length_type == 0:
+        length = ord(fh.read(1))
+    elif length_type == 1:
+        length = short_to_int(bytearray(fh.read(2)), 0)
+    elif length_type == 2:
+        length = long_to_int(bytearray(fh.read(4)), 0)
+    else:
+        # with & 3 and the other cases, this has to be 3.
+        raise ValueError
+    return length
+
+
 def old_packet_length(data, offset):
     length_type = int(data[offset]) & 0x03
     offset += 1
@@ -427,6 +635,21 @@ def old_packet_length(data, offset):
         # with & 3 and the other cases, this has to be 3.
         length = len(data) - offset
     return offset, length
+
+
+def new_packet_length_from_stream(fh):
+    length = ord(fh.read(1))
+    partial = False
+    if length < 192:
+        pass
+    elif length < 224:
+        length = ((length - 192) << 8) + ord(fh.read(1)) + 192
+    elif length == 255:
+        length = long_to_int(bytearray(fh.read(4)), 0)
+    else:
+        partial = True
+        length = 1 << (length & 0x1f)
+    return length, partial
 
 
 def new_packet_length(data, offset):
@@ -612,3 +835,29 @@ def get_signature_values(signature_packet_data):
         result.append(mpi)
 
     return result
+
+
+def key_packet_fingerprint(packet):
+    if packet.version < 4:
+        md5 = MD5.new()
+        # Key type must be RSA for v2 and v3 public keys
+        if packet.public_key_algorithm in (1, 2, 3):
+            md5.update(int_to_bytes(packet.modulus_n))
+            md5.update(int_to_bytes(packet.exponent_e))
+        elif packet.public_key_algorithm in (16, 20):
+            md5.update(int_to_bytes(packet.prime_p))
+            md5.update(int_to_bytes(packet.group_generator_g))
+        fingerprint = md5.hexdigest().upper()
+    elif packet.version >= 4:
+        sha1 = SHA.new()
+        pubkey_data = packet.public_content
+        pubkey_length = len(pubkey_data)
+        seed_bytes = (
+                0x99,
+                (pubkey_length >> 8) & 0xff,
+                pubkey_length & 0xff
+            )
+        sha1.update(bytearray(seed_bytes))
+        sha1.update(pubkey_data)
+        fingerprint = sha1.hexdigest().upper()
+    return fingerprint

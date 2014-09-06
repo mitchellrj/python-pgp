@@ -319,4 +319,5 @@ def parse_user_id(user_id):
     a = AddrlistClass(user_id)
     user_name, user_email = a.getaddress()[0]
     user_comment = ' '.join(a.commentlist)
+    user_name = user_name.replace(user_comment, '').strip()
     return user_name, user_email, user_comment

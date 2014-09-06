@@ -17,6 +17,18 @@
 
 from pgp.armor import ASCIIArmor
 from pgp.packets.packets import packet_from_packet_data
+from pgp.packets.packets import packet_from_packet_stream
+
+
+def parse_binary_packet_stream(fh):
+    while 1:
+        pos = fh.tell()
+        if len(fh.read(1)) != 1:
+            return
+        else:
+            fh.seek(pos)
+        packet = packet_from_packet_stream(fh)
+        yield packet
 
 
 def parse_binary_packet_data(data):

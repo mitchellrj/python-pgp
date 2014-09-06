@@ -13,36 +13,3 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-from __future__ import absolute_import
-
-from pgp.cipher import aidea
-
-__all__ = ['aidea', 'camellia', 'twofish']
-
-
-try:
-    import camcrypt
-    camcrypt.CamCrypt()
-    HAS_CAMELLIA = True
-except (ImportError, OSError):
-    HAS_CAMELLIA = False
-
-
-try:
-    import twofish as _twofish
-    HAS_TWOFISH = True
-except ImportError:
-    HAS_TWOFISH = False
-
-
-if HAS_CAMELLIA:
-    from pgp.cipher import camellia
-else:
-    camellia = None
-
-
-if HAS_TWOFISH:
-    from pgp.cipher import twofish
-else:
-    twofish = None

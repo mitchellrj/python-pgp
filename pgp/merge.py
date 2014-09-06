@@ -21,6 +21,8 @@
 
 from collections import OrderedDict
 
+from pgp import utils
+
 
 IGNORED_KEYS = ('data', 'data_file_hash', 'data_file', 'signatures',
                 'key_hash', '_skeleton', '_obj', '_packet', '_sig_hash2',

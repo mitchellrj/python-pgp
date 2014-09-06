@@ -39,7 +39,7 @@ data_types = {
 
 DASHES = '-----'
 header_line_expr = re.compile(
-    '^{dashes} BEGIN (?:'
+    '^{dashes}BEGIN (?:'
     '(?P<message>{message})(?:, PART '
         '(?P<part>[1-9][0-9]*)'
         '(?:/'
@@ -49,7 +49,7 @@ header_line_expr = re.compile(
     '|(?P<public_key>{public_key})'
     '|(?P<private_key>{private_key})'
     '|(?P<signature>{signature})'
-    ') {dashes}$'.format(
+    '){dashes}$'.format(
         dashes=DASHES,
         message=data_types[PGP_MESSAGE],
         public_key=data_types[PGP_PUBLIC_KEY_BLOCK],
@@ -73,7 +73,8 @@ class ASCIIArmor(object):
         header_line = lines[line_no]
         header_matches = header_line_expr.match(header_line)
         if header_matches is None:
-            raise ValueError
+            raise ValueError('{0} is not a valid header.'.format(
+                repr(header_line)))
 
         line_no += 1
         part = None
@@ -132,21 +133,22 @@ class ASCIIArmor(object):
             data_lines.append(lines[line_no])
             line_no += 1
 
-        data = b64decode(data_lines.join(''))
+        data = b64decode(''.join(data_lines))
         checksum_data = b64decode(lines[line_no][1:])
-        checksum = (
-            ((checksum_data[0] << 16) & 0xff) +
-            ((checksum_data[1] << 8) & 0xff) +
-            checksum_data[2] & 0xff
+        expected_checksum = (
+            ((checksum_data[0] << 16)) +
+            ((checksum_data[1] << 8)) +
+            checksum_data[2]
             )
         line_no += 1
 
-        if crc24(data) != checksum:
-            raise ValueError
+        actual_checksum = crc24(data)
+        if actual_checksum != expected_checksum:
+            raise ValueError('Checksum does not match. {0} (actual) != {1} (expected).'.format(repr(actual_checksum), repr(expected_checksum)))
 
         tail_line = lines[line_no]
         if tail_line != header_line.replace('BEGIN', 'END'):
-            raise ValueError
+            raise ValueError('Tail line does not match header line. {0} {1}'.format(repr(header_line), repr(tail_line)))
 
         return cls(data_type, data, part, total_parts, version, comment,
                    message_id, hash_algorithms, charset)
@@ -157,24 +159,24 @@ class ASCIIArmor(object):
         self.data_type = data_type
         self.data = data
         self.part = part
-        self.total_parts
+        self.total_parts = total_parts
         self.version = version
         self.comment = comment
         self.message_id = message_id
-        self.hash_algorithms
+        self.hash_algorithms = hash_algorithms
         self.charset = charset
         self.extra_headers = extra_headers
 
     def __str__(self):
         result_lines = []
         if self.data_type != PGP_MESSAGE:
-            result_lines.append('{dashes} BEGIN {data_type} {dashes}'.format(
+            result_lines.append('{dashes}BEGIN {data_type}{dashes}'.format(
                     dashes=DASHES, data_type=data_types[self.data_type]
                 ))
         elif self.data_type == PGP_MESSAGE:
             if self.part is not None and self.total_parts is not None:
                 result_lines.append((
-                    '{dashes} BEGIN {data_type}, PART {part}/{total_parts} '
+                    '{dashes}BEGIN {data_type}, PART {part}/{total_parts}'
                     '{dashes}'
                     ).format(
                         dashes=DASHES,
@@ -184,7 +186,7 @@ class ASCIIArmor(object):
                     ))
             elif self.part is not None:
                 result_lines.append((
-                    '{dashes} BEGIN {data_type}, PART {part} {dashes}'
+                    '{dashes}BEGIN {data_type}, PART {part}{dashes}'
                     ).format(
                         dashes=DASHES,
                         data_type=data_types[self.data_type],
@@ -192,29 +194,29 @@ class ASCIIArmor(object):
                     ))
             else:
                 result_lines.append((
-                    '{dashes} BEGIN {data_type} {dashes}'
+                    '{dashes}BEGIN {data_type}{dashes}'
                     ).format(
                         dashes=DASHES,
                         data_type=data_types[self.data_type],
                     ))
         if self.version is not None:
-            result_lines.append('Version: {version}'.format(self.version))
+            result_lines.append('Version: {version}'.format(version=self.version))
         if self.comment is not None:
-            result_lines.append('Comment: {comment}'.format(self.comment))
-        if self.version is not None:
+            result_lines.append('Comment: {comment}'.format(comment=self.comment))
+        if self.message_id is not None:
             result_lines.append(
-                    'MessageID: {message_id}'.format(self.message_id))
-        if self.version is not None:
-            result_lines.append('Hash: {hash}'.format(self.hash_algorithms))
-        if self.version is not None:
-            result_lines.append('Charset: {charset}'.format(self.charset))
+                    'MessageID: {message_id}'.format(message_id=self.message_id))
+        if self.hash_algorithms is not None:
+            result_lines.append('Hash: {hash}'.format(hash=self.hash_algorithms))
+        if self.charset is not None:
+            result_lines.append('Charset: {charset}'.format(charset=self.charset))
         if self.extra_headers is not None:
             for k, v in self.extra_headers:
                 result_lines.append('{0}: {1}'.format(k, v))
 
         result_lines.append('')
 
-        encoded_data = b64encode(self.data)
+        encoded_data = b64encode(self.data).decode('us-ascii')
         data_lines = []
         for l in range(int(math.ceil(len(encoded_data) / 72.0))):
             data_lines.append(encoded_data[l * 72:(l * 72) + 72])
@@ -225,7 +227,7 @@ class ASCIIArmor(object):
                 (checksum_value >> (i * 8)) & 0xff
                 for i in (2, 1, 0)
                 ])
-        checksum = b64encode(checksum_bytes)
+        checksum = b64encode(checksum_bytes).decode('us-ascii')
         result_lines.append('={0}'.format(checksum))
         result_lines.append(result_lines[0].replace('BEGIN', 'END'))
 

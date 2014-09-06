@@ -90,3 +90,22 @@ IMAGE_ATTRIBUTE_SUBPACKET_TYPE = 1
 
 # User attribute image subpacket image formats
 JPEG_IMAGE_FORMAT = 1
+
+
+human_signature_types = {
+    0x00: 'Signature of a binary document',
+    0x01: 'Signature of a canonical text document',
+    0x02: 'Standalone signature',
+    0x10: 'Generic certification of a User ID and Public-Key packet',
+    0x11: 'Persona certification of a User ID and Public-Key packet',
+    0x12: 'Casual certification of a User ID and Public-Key packet',
+    0x13: 'Positive certification of a User ID and Public-Key packet',
+    0x18: 'Subkey Binding Signature',
+    0x19: 'Primary Key Binding Signature',
+    0x1F: 'Signature directly on a key',
+    0x20: 'Key revocation signature',
+    0x28: 'Subkey revocation signature',
+    0x30: 'Certification revocation signature',
+    0x40: 'Timestamp signature',
+    0x50: 'Third-Party Confirmation signature',
+    }
