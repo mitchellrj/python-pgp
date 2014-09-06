@@ -121,9 +121,6 @@ class BaseSignature(object):
     hash2 = None
     signature_values = None
 
-    # Information about the signature
-    creation_time = None
-
     # Packet level options
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
 
@@ -202,7 +199,7 @@ class BaseSignature(object):
             self._issuer_key_id = issuer_key_id
         elif version >= 4:
             if creation_time is not None:
-                self.creation_time = creation_time
+                self._creation_time = creation_time
             if issuer_key_id is not None:
                 self.issuer_key_ids = [issuer_key_id]
         self.hashed_subpackets = hashed_subpackets or []
@@ -265,7 +262,6 @@ class BaseSignature(object):
             if getattr(sp, attr) == value:
                 self._remove_subpacket(sp)
 
-    @property
     def _get_creation_time(self):
         if self.version in (2, 3):
             return self._creation_time
@@ -282,7 +278,8 @@ class BaseSignature(object):
                 C.CREATION_TIME_SUBPACKET_TYPE,
                 'time', value)
 
-    @property
+    creation_time = property(_get_creation_time, _set_creation_time)
+
     def _get_issuer_key_ids(self):
         if self.version in (2, 3):
             return [self._issuer_key_ids]
