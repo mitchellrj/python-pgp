@@ -27,6 +27,12 @@ class UserAttributeSubpacket(object):
     def __init__(self, sub_type):
         self.sub_type = sub_type
 
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self.sub_type == other.sub_type
+            )
+
     @property
     def content(self):
         return bytearray()
@@ -78,6 +84,15 @@ class ImageAttributeSubpacket(UserAttributeSubpacket):
         self.header_length = header_length
         self.image_format = image_format
         self.data = content_data
+
+    def __eq__(self, other):
+        return (
+            super(ImageAttributeSubpacket, self).__eq__(other)
+            and self.header_version == other.header_version
+            and self.header_length == other.header_length
+            and self.image_format == other.image_format
+            and self.data == other.data
+            )
 
     @property
     def content(self):

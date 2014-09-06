@@ -22,6 +22,15 @@ class SimpleS2K(object):
         self.salt = bytearray()
         self.count = 1
 
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self.hash_algorithm == other.hash_algorithm
+            and self.symmetric_algorithm == other.symmetric_algorithm
+            and self.salt == other.salt
+            and self.count == other.count
+            )
+
     def __bytes__(self):
         return bytes(bytearray([self.hash_algorithm]) + bytearray(self.salt))
 
@@ -155,6 +164,14 @@ class GnuPGS2K(SimpleS2K):
         self.mode = mode
         self.serial_number = serial_number
         self.serial_number_length = serial_number_length
+
+    def __eq__(self, other):
+        return (
+            super(GnuPGS2K, self).__eq__(other)
+            and self.mode == other.mode
+            and self.serial_number == other.serial_number
+            and self.serial_number_length == other.serial_number_length
+            )
 
     def to_key(self, passphrase):
         # TODO: complete OpenPGP card & GnuPG dummy s2k

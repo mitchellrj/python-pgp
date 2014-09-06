@@ -30,6 +30,13 @@ class SignatureSubpacket(object):
         self.type = type_
         self.critical = critical
 
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self.type == other.type
+            and self.critical == other.critical
+            )
+
     @property
     def content(self):
         return bytearray()
@@ -44,7 +51,7 @@ class SignatureSubpacket(object):
         raw = self.type + (0x80 if self.critical else 0x00)
         result.append(raw)
         result.extend(data)
-        return result
+        return bytes(result)
 
 
 class CreationTimeSubpacket(SignatureSubpacket):
@@ -54,6 +61,12 @@ class CreationTimeSubpacket(SignatureSubpacket):
         assert len(sub_data) == 4
         time = utils.long_to_int(sub_data, 0)
         return cls(critical, time)
+
+    def __eq__(self, other):
+        return (
+            super(CreationTimeSubpacket, self).__eq__(other)
+            and self.time == other.time
+            )
 
     def __init__(self, critical, time):
         SignatureSubpacket.__init__(
@@ -87,6 +100,12 @@ class ExportableSubpacket(SignatureSubpacket):
                 self, constants.EXPORTABLE_SUBPACKET_TYPE, critical)
         self.exportable = exportable
 
+    def __eq__(self, other):
+        return (
+            super(ExportableSubpacket, self).__eq__(other)
+            and self.exportable == other.exportable
+            )
+
     @property
     def content(self):
         # ensure self.exportable is bool before getting an int value
@@ -110,6 +129,13 @@ class TrustSubpacket(SignatureSubpacket):
         self.depth = depth
         self.amount = amount
 
+    def __eq__(self, other):
+        return (
+            super(TrustSubpacket, self).__eq__(other)
+            and self.depth == other.depth
+            and self.amount == other.amount
+            )
+
     @property
     def content(self):
         return bytearray([int(self.depth), int(self.amount)])
@@ -129,6 +155,12 @@ class RegularExpressionSubpacket(SignatureSubpacket):
                 self, constants.REGULAR_EXPRESSION_SUBPACKET_TYPE, critical)
         self.pattern = pattern
 
+    def __eq__(self, other):
+        return (
+            super(RegularExpressionSubpacket, self).__eq__(other)
+            and self.pattern == other.pattern
+            )
+
     @property
     def content(self):
         return bytearray(self.pattern.encode('ascii', 'replace'))
@@ -147,6 +179,12 @@ class RevocableSubpacket(SignatureSubpacket):
         SignatureSubpacket.__init__(
                 self, constants.REVOCABLE_SUBPACKET_TYPE, critical)
         self.revocable = revocable
+
+    def __eq__(self, other):
+        return (
+            super(RevocableSubpacket, self).__eq__(other)
+            and self.revocable == other.revocable
+            )
 
     @property
     def content(self):
@@ -190,6 +228,14 @@ class AdditionalRecipientRequestSubpacket(SignatureSubpacket):
         self.public_key_algorithm = public_key_algorithm
         self.fingerprint = fingerprint
 
+    def __eq__(self, other):
+        return (
+            super(AdditionalRecipientRequestSubpacket, self).__eq__(other)
+            and self.strong_request == other.strong_request
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.fingerprint == other.fingerprint
+            )
+
     @property
     def content(self):
         warnings.warn("The additional recipients request signature subpacket "
@@ -218,9 +264,15 @@ class PreferredSymmetricAlgorithmsSubpacket(SignatureSubpacket):
                 critical)
         self.preferred_algorithms = preferred_algorithms
 
+    def __eq__(self, other):
+        return (
+            super(PreferredSymmetricAlgorithmsSubpacket, self).__eq__(other)
+            and self.preferred_algorithms == other.preferred_algorithms
+            )
+
     @property
     def content(self):
-        return bytearray(map(int(self.preferred_algorithms)))
+        return bytearray(map(int, self.preferred_algorithms))
 
 
 class RevocationKeySubpacket(SignatureSubpacket):
@@ -250,6 +302,14 @@ class RevocationKeySubpacket(SignatureSubpacket):
         self.public_key_algorithm = public_key_algorithm
         self.sensitive = sensitive
 
+    def __eq__(self, other):
+        return (
+            super(RevocationKeySubpacket, self).__eq__(other)
+            and self.fingerprint == other.fingerprint
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.sensitive == other.sensitive
+            )
+
     @property
     def content(self):
         tag = 0x80 + (0x40 if self.sensitive else 0x00)
@@ -273,11 +333,17 @@ class IssuerSubpacket(SignatureSubpacket):
                 self, constants.ISSUER_KEY_ID_SUBPACKET_TYPE, critical)
         self.key_id = key_id
 
+    def __eq__(self, other):
+        return (
+            super(IssuerSubpacket, self).__eq__(other)
+            and self.key_id == other.key_id
+            )
+
     @property
     def content(self):
         data = bytearray(
-                        utils.bytearray_to_hex(self.key_id, 8)
-                    )
+                utils.hex_to_bytes(self.key_id, 8)
+            )
         return data
 
 
@@ -317,6 +383,15 @@ class NotationSubpacket(SignatureSubpacket):
         self.namespace = namespace
         self.human_readable = human_readable
         self.value = value
+
+    def __eq__(self, other):
+        return (
+            super(NotationSubpacket, self).__eq__(other)
+            and self.name == other.name
+            and self.namespace == other.namespace
+            and self.human_readable == other.human_readable
+            and self.value == other.value
+            )
 
     @property
     def content(self):
@@ -370,6 +445,12 @@ class KeyServerPreferencesSubpacket(SignatureSubpacket):
                 constants.KEY_SERVER_PREFERENCES_SUBPACKET_TYPE, critical)
         self.no_modify = no_modify
 
+    def __eq__(self, other):
+        return (
+            super(KeyServerPreferencesSubpacket, self).__eq__(other)
+            and self.no_modify == other.no_modify
+            )
+
     @property
     def content(self):
         return bytearray([0x80 if self.no_modify else 0x00])
@@ -388,6 +469,12 @@ class PreferredKeyServerSubpacket(SignatureSubpacket):
                 self, constants.PREFERRED_KEY_SERVER_SUBPACKET_TYPE, critical)
         self.uri = uri
 
+    def __eq__(self, other):
+        return (
+            super(PreferredKeyServerSubpacket, self).__eq__(other)
+            and self.uri == other.uri
+            )
+
     @property
     def content(self):
         return bytearray(self.uri.encode('utf8', 'replace'))
@@ -405,6 +492,12 @@ class PrimaryUserIDSubpacket(SignatureSubpacket):
     def __init__(self, critical, primary):
         SignatureSubpacket.__init__(self, 25, critical)
         self.primary = primary
+
+    def __eq__(self, other):
+        return (
+            super(PrimaryUserIDSubpacket, self).__eq__(other)
+            and self.primary == other.primary
+            )
 
     @property
     def content(self):
@@ -449,16 +542,28 @@ class KeyFlagsSubpacket(SignatureSubpacket):
         self.may_have_been_split = may_have_been_split
         self.may_have_multiple_owners = may_have_multiple_owners
 
+    def __eq__(self, other):
+        return (
+            super(KeyFlagsSubpacket, self).__eq__(other)
+            and self.may_certify_others == other.may_certify_others
+            and self.may_sign_data == other.may_sign_data
+            and self.may_encrypt_comms == other.may_encrypt_comms
+            and self.may_encrypt_storage == other.may_encrypt_storage
+            and self.may_be_used_for_auth == other.may_be_used_for_auth
+            and self.may_have_been_split == other.may_have_been_split
+            and self.may_have_multiple_owners == other.may_have_multiple_owners
+            )
+
     @property
     def content(self):
         data = bytearray([
-            (0x01 if self.may_certify else 0x00) +
-            (0x02 if self.may_sign else 0x00) +
+            (0x01 if self.may_certify_others else 0x00) +
+            (0x02 if self.may_sign_data else 0x00) +
             (0x04 if self.may_encrypt_comms else 0x00) +
             (0x08 if self.may_encrypt_storage else 0x00) +
             (0x10 if self.may_have_been_split else 0x00) +
             (0x20 if self.may_be_used_for_auth else 0x00) +
-            (0x80 if self.may_be_shared else 0x00)
+            (0x80 if self.may_have_multiple_owners else 0x00)
             ])
         return data
 
@@ -474,6 +579,12 @@ class UserIDSubpacket(SignatureSubpacket):
         SignatureSubpacket.__init__(
                 self, constants.ISSUERS_USER_ID_SUBPACKET_TYPE, critical)
         self.user_id = user_id
+
+    def __eq__(self, other):
+        return (
+            super(UserIDSubpacket, self).__eq__(other)
+            and self.user_id == other.user_id
+            )
 
     @property
     def content(self):
@@ -494,6 +605,13 @@ class RevocationReasonSubpacket(SignatureSubpacket):
         assert revocation_code < 256
         self.revocation_code = revocation_code
         self.revocation_reason = revocation_reason
+
+    def __eq__(self, other):
+        return (
+            super(RevocationReasonSubpacket, self).__eq__(other)
+            and self.revocation_code == other.revocation_code
+            and self.revocation_reason == other.revocation_reason
+            )
 
     @property
     def content_(self):
@@ -516,6 +634,13 @@ class FeaturesSubpacket(SignatureSubpacket):
         SignatureSubpacket.__init__(
                 self, constants.FEATURES_SUBPACKET_TYPE, critical)
         self.supports_modification_detection = supports_modification_detection
+
+    def __eq__(self, other):
+        return (
+            super(FeaturesSubpacket, self).__eq__(other)
+            and self.supports_modification_detection ==
+                other.supports_modification_detection
+            )
 
     @property
     def content(self):
@@ -554,6 +679,15 @@ class TargetSubpacket(SignatureSubpacket):
         self.hash = hash_
         self.hash_length = hash_length
 
+    def __eq__(self, other):
+        return (
+            super(TargetSubpacket, self).__eq__(other)
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.hash_algorithm == other.hash_algorithm
+            and self.hash == other.hash
+            and self.hash_length == other.hash_length
+            )
+
     @property
     def content(self):
         hash_length = utils.hash_lengths.get(self.hash_algorithm, None)
@@ -582,6 +716,12 @@ class EmbeddedSignatureSubpacket(SignatureSubpacket):
         SignatureSubpacket.__init__(
                 self, constants.EMBEDDED_SIGNATURE_SUBPACKET_TYPE, critical)
         self.signature = signature
+
+    def __eq__(self, other):
+        return (
+            super(EmbeddedSignatureSubpacket, self).__eq__(other)
+            and self.signature == other.signature
+            )
 
     @property
     def content(self):

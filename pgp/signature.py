@@ -118,6 +118,7 @@ class BaseSignature(object):
     regular_expressions = None
     revocable = None
     notations = None
+    key_expiration_seconds = None
     issuer_user_id = None
     issuer_user_name = None
     issuer_user_email = None
@@ -127,7 +128,6 @@ class BaseSignature(object):
     embedded_signatures = None
 
     # Information about the thing the signature is applied to
-    key_expiration_time = None
     preferred_compression_algorithms = None
     preferred_hash_algorithms = None
     preferred_symmetric_algorithms = None
@@ -204,7 +204,7 @@ class BaseSignature(object):
         version = packet.version
         signature_type = packet.signature_type
         public_key_algorithm = packet.public_key_algorithm
-        hash_algorithm = packet.hash_algorithm,
+        hash_algorithm = packet.hash_algorithm
         hash2 = packet.hash2
         signature_values = packet.signature_values
         if version in (2, 3):
@@ -222,7 +222,7 @@ class BaseSignature(object):
             revocation_reason = None
             revocation_code = None
             embedded_signatures = []
-            key_expiration_time = None
+            key_expiration_seconds = None
             preferred_compression_algorithms = []
             preferred_hash_algorithms = []
             preferred_symmetric_algorithms = []
@@ -298,12 +298,6 @@ class BaseSignature(object):
                     C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
                     'time',
                     default=None)
-            key_expiration_time = None
-            if key_expiration_seconds is not None:
-                key_expiration_time = (
-                    target.creation_time +
-                    datetime.timedelta(seconds=key_expiration_seconds)
-                    )
             preferred_compression_algorithms = cls._from_subpackets(
                     packet,
                     C.PREFERRED_COMPRESSION_ALGORITHMS_SUBPACKET_TYPE,
@@ -413,7 +407,7 @@ class BaseSignature(object):
                    issuer_key_ids, expiration_time, exportable, trust_depth,
                    trust_amount, regular_expressions, revocable, notations,
                    issuer_user_id, revocation_reason, revocation_code,
-                   embedded_signatures, key_expiration_time,
+                   embedded_signatures, key_expiration_seconds,
                    preferred_compression_algorithms,
                    preferred_hash_algorithms, preferred_symmetric_algorithms,
                    revocation_keys, key_server_should_not_modify,
@@ -486,13 +480,11 @@ class BaseSignature(object):
                             crit, self.revocable)
                     )
 
-            if self.key_expiration_time is not None:
+            if self.key_expiration_seconds is not None:
                 crit = is_critical(C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE)
-                key_expiration_time = int(time.mktime(
-                            self.key_expiration_time.timetuple()))
                 subpacket_list(C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE).append(
                     signature_subpackets.KeyExpirationTimeSubpacket(
-                            crit, key_expiration_time)
+                            crit, self.key_expiration_seconds)
                     )
 
             if self.preferred_symmetric_algorithms:
@@ -625,8 +617,9 @@ class BaseSignature(object):
             packet = packets.SignaturePacket(
                         header_format, self.version, self.signature_type,
                         self.public_key_algorithm, self.hash_algorithm,
-                        self.hash2, self.signature_values, hashed_subpackets,
-                        unhashed_subpackets)
+                        self.hash2, self.signature_values,
+                        hashed_subpackets=hashed_subpackets,
+                        unhashed_subpackets=unhashed_subpackets)
         elif self.version in (2, 3):
             creation_time = int(time.mktime(self.creation_time.timetuple()))
             packet = packets.SignaturePacket(
@@ -648,7 +641,7 @@ class BaseSignature(object):
                  regular_expressions=None, revocable=None, notations=None,
                  issuer_user_id=None, revocation_reason=None,
                  revocation_code=None, embedded_signatures=None,
-                 key_expiration_time=None,
+                 key_expiration_seconds=None,
                  preferred_compression_algorithms=None,
                  preferred_hash_algorithms=None,
                  preferred_symmetric_algorithms=None,
@@ -680,7 +673,7 @@ class BaseSignature(object):
         self.revocation_reason = revocation_reason
         self.revocation_code = revocation_code
         self.embedded_signatures = embedded_signatures
-        self.key_expiration_time = key_expiration_time
+        self.key_expiration_seconds = key_expiration_seconds
         self.preferred_compression_algorithms = \
             preferred_compression_algorithms
         self.preferred_hash_algorithms = preferred_hash_algorithms

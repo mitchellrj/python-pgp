@@ -58,6 +58,14 @@ header_line_expr = re.compile(
     ))
 
 
+def is_armor(byte_data):
+    try:
+        canary = byte_data[:len(DASHES)].decode('us-ascii')
+    except UnicodeError:
+        return False
+    return canary == DASHES
+
+
 class ASCIIArmor(object):
 
     @classmethod

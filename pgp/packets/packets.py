@@ -49,6 +49,13 @@ class Packet(object):
         self.type = type_
         self._content = content or bytearray()
 
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self.header_format == other.header_format
+            and self.type == other.type
+            )
+
     def __repr__(self):
         return '<{0} at 0x{1:x}>'.format(self.__class__.__name__,
                                          id(self))
@@ -125,6 +132,15 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         self.key_id = key_id
         self.public_key_algorithm = public_key_algorithm
         self.encrypted_session_key = encrypted_session_key
+
+    def __eq__(self, other):
+        return (
+            super(PublicKeyEncryptedSessionKeyPacket, self).__eq__(other)
+            and self.version == other.version
+            and self.key_id == other.key_id
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.encrypted_session_key == other.encrypted_session_key
+            )
 
     @classmethod
     def _get_key_and_cipher_algo(cls, secret_key_obj, encrypted_session_key):
@@ -296,11 +312,28 @@ class SignaturePacket(Packet):
             self.creation_time = creation_time
             self.key_id = key_id
         elif version >= 4:
+            if hashed_subpackets is None:
+                hashed_subpackets = []
+            if unhashed_subpackets is None:
+                unhashed_subpackets = []
             self.hashed_subpackets = hashed_subpackets
             self.unhashed_subpackets = unhashed_subpackets
         else:
             # TODO: message
             raise ValueError()
+
+    def __eq__(self, other):
+        return (
+            super(SignaturePacket, self).__eq__(other)
+            and self.version == other.version
+            and self.signature_type == other.signature_type
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.hash_algorithm == other.hash_algorithm
+            and self.hash2 == other.hash2
+            and self.signature_values == other.signature_values
+            and set(self.hashed_subpackets) == set(other.hashed_subpackets)
+            and set(self.unhashed_subpackets) == set(other.unhashed_subpackets)
+            )
 
     @property
     def content(self):
@@ -313,12 +346,10 @@ class SignaturePacket(Packet):
             data.append(self.hash_algorithm)
             hashed_subpacket_data = bytearray()
             unhashed_subpacket_data = bytearray()
-            for sp in self.subpackets:
-                subpacket_data = bytes(sp)
-                if sp.hashed:
-                    hashed_subpacket_data.extend(subpacket_data)
-                else:
-                    unhashed_subpacket_data.extend(subpacket_data)
+            for sp in self.hashed_subpackets:
+                hashed_subpacket_data.extend(bytes(sp))
+            for sp in self.unhashed_subpackets:
+                unhashed_subpacket_data.extend(bytes(sp))
 
             data.extend(utils.int_to_2byte(len(hashed_subpacket_data)))
             data.extend(hashed_subpacket_data)
@@ -404,6 +435,15 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
         self.symmetric_algorithm = symmetric_algorithm
         self.s2k_specification = s2k_specification
         self.encrypted_session_key = encrypted_session_key
+
+    def __eq__(self, other):
+        return (
+            super(SymmetricKeyEncryptedSessionKeyPacket, self).__eq__(other)
+            and self.version == other.version
+            and self.symmetric_algorithm == other.symmetric_algorithm
+            and self.s2k_specification == other.s2k_specification
+            and self.encrypted_session_key == other.encrypted_session_key
+            )
 
     def get_key_and_cipher_algo(self, passphrase):
         return self._get_key_and_cipher_algo(self.s2k_specification,
@@ -503,6 +543,16 @@ class OnePassSignaturePacket(Packet):
         self.key_id = key_id
         self.nested = nested
 
+    def __eq__(self, other):
+        return (
+            super(OnePassSignaturePacket, self).__eq__(other)
+            and self.signature_type == other.signature_type
+            and self.hash_algorithm == other.hash_algorithm
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.key_id == other.key_id
+            and self.nested == other.nested
+            )
+
     @property
     def content(self):
         data = bytearray([
@@ -584,6 +634,21 @@ class PublicKeyPacket(Packet):
         self.group_order = group_order
         self.key_value = key_value
 
+    def __eq__(self, other):
+        return (
+            super(PublicKeyPacket, self).__eq__(other)
+            and self.version == other.version
+            and self.creation_time == other.creation_time
+            and self.public_key_algorithm == other.public_key_algorithm
+            and self.expiration_days == other.expiration_days
+            and self.modulus == other.modulus
+            and self.exponent == other.exponent
+            and self.prime == other.prime
+            and self.group_generator == other.group_generator
+            and self.group_order == other.group_order
+            and self.key_value == other.key_value
+            )
+
     @property
     def public_content(self):
         data = bytearray([self.version])
@@ -624,6 +689,10 @@ class PublicKeyPacket(Packet):
         result.extend(utils.int_to_2byte(len(key_data)))
         result.extend(key_data)
         return result
+
+    @property
+    def key_id(self):
+        return self.fingerprint[-16:]
 
     @property
     def fingerprint(self):
@@ -729,6 +798,17 @@ class SecretKeyPacket(PublicKeyPacket):
         self.prime_q = prime_q
         self.multiplicative_inverse_u = multiplicative_inverse_u
         self.exponent_x = exponent_x
+
+    def __eq__(self, other):
+        return (
+            super(SecretKeyPacket, self).__eq__(other)
+            and self.s2k_specification == other.s2k_specification
+            and self.symmetric_algorithm == other.symmetric_algorithm
+            and self.iv == other.iv
+            and self.encrypted_portion == other.encrypted_portion
+            and self.checksum == other.checksum
+            and self.hash == other.hash_
+            )
 
     def decrypt(self, passphrase):
         if self.s2k_specification is not None:
@@ -929,6 +1009,7 @@ class SecretSubkeyPacket(SecretKeyPacket):
         self.iv = iv
         self.encrypted_portion = encrypted_portion
         self.checksum = checksum
+        self.hash = hash_
 
 
 class CompressedDataPacket(Packet):
@@ -954,6 +1035,13 @@ class CompressedDataPacket(Packet):
         if packets is None:
             packets = []
         self.packets = packets
+
+    def __eq__(self, other):
+        return (
+            super(CompressedDataPacket, self).__eq__(other)
+            and self.compression_algorithm == other.compression_algorithm
+            and self.packets == other.packets
+            )
 
     @property
     def content(self):
@@ -981,6 +1069,12 @@ class SymmetricallyEncryptedDataPacket(Packet):
                         constants.SYMMETRICALLY_ENCRYPTED_DATA_PACKET_TYPE)
         self.data = data
 
+    def __eq__(self, other):
+        return (
+            super(SymmetricallyEncryptedDataPacket, self).__eq__(other)
+            and self.data == other.data
+            )
+
     @property
     def content(self):
         return self.data
@@ -998,6 +1092,13 @@ class MarkerPacket(Packet):
         Packet.__init__(self, header_format, constants.MARKER_PACKET_TYPE)
         self.old_literal = old_literal
         self.content = content
+
+    def __eq__(self, other):
+        return (
+            super(MarkerPacket, self).__eq__(other)
+            and self.old_literal == other.old_literal
+            and self.content == other.content
+            )
 
 
 class LiteralDataPacket(Packet):
@@ -1029,7 +1130,8 @@ class LiteralDataPacket(Packet):
             # RFC 1991 ncorrectly stated this local mode flag as '1'
             # (ASCII numeral one).
             pass
-        content = content.decode(encoding)
+        if encoding:
+            content = content.decode(encoding)
         if data_format in (b't', b'u'):
             content.replace('\r\n', os.linesep)
 
@@ -1042,6 +1144,15 @@ class LiteralDataPacket(Packet):
         self.filename = filename
         self.time = time
         self.data = data
+
+    def __eq__(self, other):
+        return (
+            super(LiteralDataPacket, self).__eq__(other)
+            and self.data_format == other.data_format
+            and self.filename == other.filename
+            and self.time == other.time
+            and self.data == other.data
+            )
 
     @property
     def content(self):
@@ -1087,6 +1198,13 @@ class TrustPacket(Packet):
         self.trust_value = trust_value
         self.sig_cache = sig_cache
 
+    def __eq__(self, other):
+        return (
+            super(TrustPacket, self).__eq__(other)
+            and self.trust_value == other.trust_value
+            and self.sig_cache == other.sig_cache
+            )
+
     @property
     def checked(self):
         return bool(self.sig_cache & 1)
@@ -1106,7 +1224,7 @@ class TrustPacket(Packet):
 class UserIDPacket(Packet):
 
     @classmethod
-    def from_packet_content(cls, header_format, data):
+    def from_packet_content(cls, header_format, type_, data):
         return cls(header_format, data.decode('utf8', 'replace'))
 
     def __init__(self, header_format, user_id):
@@ -1117,6 +1235,12 @@ class UserIDPacket(Packet):
         return '<{0} {1} at 0x{2:x}>'.format(self.__class__.__name__,
                                              repr(self.user_id),
                                              id(self))
+
+    def __eq__(self, other):
+        return (
+            super(UserIDPacket, self).__eq__(other)
+            and self.user_id == other.user_id
+            )
 
     @property
     def content(self):
@@ -1149,6 +1273,12 @@ class OldCommentPacket(Packet):
                         constants.OLD_COMMENT_PACKET_TYPE)
         self.comment = comment
 
+    def __eq__(self, other):
+        return (
+            super(OldCommentPacket, self).__eq__(other)
+            and self.comment == other.comment
+            )
+
     @property
     def content(self):
         warnings.warn("The comment packet type, 16, only appears in an "
@@ -1175,6 +1305,12 @@ class UserAttributePacket(Packet):
         Packet.__init__(self, header_format,
                         constants.USER_ATTRIBUTE_PACKET_TYPE)
         self.subpackets = subpackets
+
+    def __eq__(self, other):
+        return (
+            super(UserAttributePacket, self).__eq__(other)
+            and self.subpackets == other.subpackets
+            )
 
     @property
     def content(self):
@@ -1207,6 +1343,13 @@ class SymmetricallyEncryptedAndIntegrityProtectedDataPacket(Packet):
         self.version = version
         self.encrypted_data = encrypted_data
 
+    def __eq__(self, other):
+        return (
+            super(SymmetricallyEncryptedAndIntegrityProtectedDataPacket, self).__eq__(other)
+            and self.version == other.version
+            and self.encrypted_data == encrypted_data
+            )
+
     @property
     def content(self):
         result = bytearray([self.version])
@@ -1226,6 +1369,12 @@ class ModificationDetectionCodePacket(Packet):
                         constants.MODIFICATION_DETECTION_CODE_PACKET_TYPE)
         self.data = data
 
+    def __eq__(self, other):
+        return (
+            super(ModificationDetectionCodePacket, self).__eq__(other)
+            and self.data == other.data
+            )
+
     @property
     def content(self):
         return self.data
@@ -1236,6 +1385,7 @@ class GpgCommentPacket(OldCommentPacket):
     def __init__(self, header_format, comment):
         Packet.__init__(self, header_format,
                         constants.GPG_COMMENT_PACKET_TYPE)
+        self.comment = comment
 
     @property
     def content(self):
@@ -1266,6 +1416,14 @@ class GpgControlPacket(Packet):
         self.session_marker = session_marker
         self.control = control
         self.content_data = content_data
+
+    def __eq__(self, other):
+        return (
+            super(GpgControlPacket, self).__eq__(other)
+            and self.session_marker == other.session_marker
+            and self.control == other.control
+            and self.content_data == other.content_data
+            )
 
     @property
     def content(self):

@@ -41,7 +41,7 @@ class KeySignature(BaseSignature):
     def is_self_signature(self):
         target = self.target
         own_key_ids = []
-        if isinstance(target, TransferablePublicKey):
+        if isinstance(target, (TransferablePublicKey, TransferableSecretKey)):
             primary_public_key = target
         else:
             primary_public_key = target.primary_public_key
@@ -355,6 +355,17 @@ class BaseSecretKey(BasePublicKey):
         self.checksum = checksum
         self.hash = hash_
 
+    def to_public_key(self):
+        key = self._PublicClass(
+            self.version, self.public_key_algorithm, self.creation_time,
+            self.expiration_time, self.modulus_n, self.exponent_e,
+            self.prime_p, self.group_generator_g, self.group_order_q,
+            self.key_value_y, self.signatures)
+        key.user_ids = self.user_ids
+        key.user_attributes = self.user_attributes
+        key.subkeys = map(lambda k: k.to_public_key(), self.subkeys)
+        return key
+
     def _to_packet_args(self, header_format=C.NEW_PACKET_HEADER_TYPE):
         args = BasePublicKey._to_packet_args(self, header_format)
         args += (self.s2k_specification, self.symmetric_algorithm, self.iv,
@@ -429,6 +440,7 @@ class PublicSubkey(BasePublicKey):
 class SecretSubkey(PublicSubkey, BaseSecretKey):
 
     _PacketClass = packets.SecretSubkeyPacket
+    _PublicClass = PublicSubkey
 
     def __init__(self, primary_public_key, *args, **kwargs):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
@@ -598,7 +610,7 @@ def validate_transferrable_key(packets, secret=False):
                         "Public Key Packet must be first in the list")
         elif this == C.SIGNATURE_PACKET_TYPE:
             sig_type = packets[i].signature_type
-            previous_non_sig = [x for x in type_order[i - 1::-1] if x not in (
+            previous_non_sig = [x for x in type_order[j::-1] if x not in (
                                 C.SIGNATURE_PACKET_TYPE, C.TRUST_PACKET_TYPE)][0]
             if sig_type == C.SIGNATURE_DIRECTLY_ON_A_KEY:
                 for t in type_order[:i]:
@@ -609,7 +621,11 @@ def validate_transferrable_key(packets, secret=False):
                                     "appear immediately after the Public Key "
                                     "Packet")
             elif sig_type == C.SUBKEY_BINDING_SIGNATURE:
-                if previous != subkey_packet_type:
+                if previous_non_sig != subkey_packet_type:
+                    raise exceptions.InvalidKeyPacketOrder(
+                                "Subkey Binding Signature may only appear "
+                                "immediately after a Subkey Packet, not {0}".format(previous))
+                if previous == C.SIGNATURE_PACKET_TYPE and packets[j].signature_type != C.SUBKEY_BINDING_SIGNATURE:
                     raise exceptions.InvalidKeyPacketOrder(
                                 "Subkey Binding Signature may only appear "
                                 "immediately after a Subkey Packet, not {0}".format(previous))
@@ -625,7 +641,7 @@ def validate_transferrable_key(packets, secret=False):
                                     "Key")
             elif sig_type == C.SUBKEY_REVOCATION_SIGNATURE:
                 if (previous != C.SIGNATURE_PACKET_TYPE
-                        or packets[i - 1].sig_type != C.SUBKEY_REVOCATION_SIGNATURE):
+                        or packets[j].signature_type != C.SUBKEY_REVOCATION_SIGNATURE):
                     raise exceptions.InvalidKeyPacketOrder(
                                 "Subkey Revocation Signature may only appear "
                                 "after a Subkey Binding Signature")
@@ -790,6 +806,7 @@ class TransferablePublicKey(BasePublicKey):
 class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
 
     _SubkeyClass = SecretSubkey
+    _PublicClass = TransferablePublicKey
     _PacketClass = packets.SecretKeyPacket
     _secret = True
 

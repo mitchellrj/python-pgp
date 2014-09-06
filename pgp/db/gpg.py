@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import atexit
+from collections import OrderedDict
 try:
     from dbm import gnu as gdbm
 except ImportError:
@@ -35,6 +37,36 @@ GDBM_MAGIC = (
     b'\x13\x57\x9a\xce'
     b'\xce\x9a\x57\x13'
 )
+
+
+DEFAULT_RESOURCES = (
+    (
+        os.path.expanduser(os.path.join(
+            '~', '.gnupg', 'secring{0}gpg'.format(os.path.extsep))),
+        True
+    ),
+    (
+        os.path.expanduser(os.path.join(
+            '~', '.gnupg', 'pubring{0}gpg'.format(os.path.extsep))),
+        False
+    ),
+)
+
+
+_locks = []
+
+@atexit.register
+def _clean_up_locks():
+    for l in _locks:
+        l.release()
+        try:
+            os.unlink(l.name)
+        except:
+            pass
+        try:
+            os.unlink(l.lock_template_name)
+        except:
+            pass
 
 
 class Lock(object):
@@ -59,11 +91,12 @@ class Lock(object):
             filename,
             os.path.extsep)
         self._lock = threading.RLock()
+        _locks.append(self)
 
     def __del__(self):
         try:
-            os.unlink(self.lock_template_name)
             self.release()
+            os.unlink(self.lock_template_name)
         except:
             # TODO: log an error
             pass
@@ -117,51 +150,29 @@ class ResourceTypes:
     GDBM = 3
 
 
-def get_resource(filename, force=False, secret=False, read_only=False):
-
-    type_ = ResourceTypes.NONE
-    if filename.startswith('gnupg-keyring:'):
-        type_ = ResourceTypes.KEYRING
-        filename = filename[12:]
-    elif filename.startswith('gnupg-kbx:'):
-        type_ = ResourceTypes.KEYBOX
-        filename = filename[11:]
-    filename = os.path.abspath(filename)
-
-    if type_ == ResourceTypes.NONE:
-        magic = None
-        try:
-            fh = open(filename, 'rb')
-            magic = fh.read(4)
-        except OSError:
-            type_ = ResourceTypes.KEYRING
-        else:
-            if magic in GDBM_MAGIC:
-                type_ = ResourceTypes.GDBM
-            elif fh.read(4)[:1] == b'\x01' and fh.read(4) == b'KBXf':
-                type_ = ResourceTypes.KEYBOX
-            else:
-                type_ = ResourceTypes.KEYRING
-            fh.close()
-
-    if type_ == ResourceTypes.KEYBOX:
-        raise ValueError('Unsupported resource type, Keybox')
-    elif type_ == ResourceTypes.KEYRING:
-        return Keyring(filename, force, secret, read_only)
-    elif type_ == ResourceTypes.GDBM:
-        return GDBM(filename, force, secret, read_only)
-    else:
-        raise ValueError('Unknown resource type')
-
-
 class BaseResource(object):
 
-    def __init__(self, filename, force, secret, read_only):
+    def __init__(self, filename, force, secret, read_only, default):
         self.filename = filename
         self._lock = Lock(self.filename)
         self.secret = secret
         self.read_only = read_only
+        self.default = default
         self._maybe_create(force)
+
+    def items(self):
+        for k in self.keys():
+            yield k, self.get_transferrable_key(k)
+
+    def values(self):
+        for k in self.keys():
+            yield self.get_transferrable_key(k)
+
+    def __iter__(self):
+        return self.keys()
+
+    def __contains__(self, fingerprint):
+        return fingerprint in self.keys()
 
     def lock_db(self):
         self._lock.acquire()
@@ -179,6 +190,15 @@ class BaseResource(object):
 
 
 class GDBM(BaseResource):
+
+    def __init__(self, *args, **kwargs):
+        super(GDBM, self).__init__(*args, **kwargs)
+        first_key = self.firstkey()
+        if first_key is not None:
+            packet = next(parse_binary_packet_data(self[first_key]))
+            self._preferred_header_format = packet.header_format
+        else:
+            self._preferred_header_format = constants.OLD_PACKET_HEADER_TYPE
 
     def keys(self):
         self.lock_db()
@@ -200,6 +220,13 @@ class GDBM(BaseResource):
             self.unlock_db()
 
     def get_transferrable_key(self, fingerprint):
+        if len(fingerprint) != 40:
+            # Actually a key ID - find the fingerprint first.
+            fingerprint = ([k for k in self.keys() if k.endswith(fingerprint)] + [None])[0]
+
+        if fingerprint is None:
+            return None
+
         self.lock_db()
         try:
             with gdbm.open(self.filename, 'r') as db:
@@ -223,7 +250,7 @@ class GDBM(BaseResource):
                 if key.fingerprint in db:
                     raise KeyError(key.fingerprint)
                 db[key.fingerprint] = \
-                    b''.join(map(bytes, key.to_packets()))
+                    b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
         finally:
             self.unlock_db()
 
@@ -238,7 +265,7 @@ class GDBM(BaseResource):
                 if key.fingerprint not in db:
                     raise KeyError(key.fingerprint)
                 db[key.fingerprint] = \
-                    b''.join(map(bytes, key.to_packets()))
+                    b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
         finally:
             self.unlock_db()
 
@@ -261,8 +288,9 @@ class Keyring(BaseResource):
 
     _offset_table = None
 
-    def __init__(self, filename, force, secret, read_only):
-        super(Keyring, self).__init__(filename, force, secret, read_only)
+    def __init__(self, filename, force, secret, read_only, default):
+        super(Keyring, self).__init__(filename, force, secret, read_only, default)
+        self._preferred_header_format = None
         self._update_offset_table()
 
     def keys(self):
@@ -276,11 +304,13 @@ class Keyring(BaseResource):
                 packet_iter = parse_binary_packet_stream(fh)
                 last_offset = fh.tell()
                 for packet in packet_iter:
+                    if self._preferred_header_format is None:
+                        self._preferred_header_format = packet.header_format
                     if packet.type in (
                             constants.PUBLIC_KEY_PACKET_TYPE,
                             constants.SECRET_KEY_PACKET_TYPE,
                             ):
-                        offset_table[packet.fingerprint] = last_offset
+                        offset_table[packet.key_id[-8:]] = last_offset
                     last_offset = fh.tell()
         finally:
             self.unlock_db()
@@ -328,7 +358,7 @@ class Keyring(BaseResource):
             self.unlock_db()
 
     def get_transferrable_key(self, fingerprint):
-        offset = self._offset_table[fingerprint]
+        offset = self._offset_table[fingerprint[-8:]]
         return self._get_key(offset)
 
     def add_transferrable_key(self, key):
@@ -344,10 +374,10 @@ class Keyring(BaseResource):
             with open(self.filename, 'rb') as fh:
                 data = fh.read()
 
-            data += b''.join(map(bytes, key.to_packets()))
+            data += b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
             with open(self.filename, 'wb') as fh:
                 fh.write(data)
-            self.update_offset_table()
+            self._update_offset_table()
         finally:
             self.unlock_db()
 
@@ -357,10 +387,10 @@ class Keyring(BaseResource):
         if self.read_only:
             raise TypeError
 
-        if key.fingerprint not in self._offset_table:
+        if key.fingerprint[-8:] not in self._offset_table:
             raise KeyError
 
-        offset = self._offset_table[key.fingerprint]
+        offset = self._offset_table[key.fingerprint[-8:]]
         self.lock_db()
         try:
             data = b''
@@ -383,7 +413,7 @@ class Keyring(BaseResource):
             data += b''.join(map(bytes, key.to_packets(header_format)))
             with open(self.filename, 'wb') as fh:
                 fh.write(data)
-            self.update_offset_table()
+            self._update_offset_table()
         finally:
             self.unlock_db()
 
@@ -391,10 +421,10 @@ class Keyring(BaseResource):
         if self.read_only:
             raise TypeError
 
-        if key.fingerprint not in self._offset_table:
+        if key.fingerprint[-8:] not in self._offset_table:
             raise KeyError
 
-        offset = self._offset_table[key.fingerprint]
+        offset = self._offset_table[key.fingerprint[-8:]]
         self.lock_db()
         try:
             data = b''
@@ -416,26 +446,146 @@ class Keyring(BaseResource):
                 data += fh.read()
             with open(self.filename, 'wb') as fh:
                 fh.write(data)
-            self.update_offset_table()
+            self._update_offset_table()
         finally:
             self.unlock_db()
 
 
-class Database(object):
+def get_resource(filename, force=False, secret=False, read_only=False,
+                 default=False):
+
+    type_ = ResourceTypes.NONE
+    if filename.startswith('gnupg-keyring:'):
+        type_ = ResourceTypes.KEYRING
+        filename = filename[12:]
+    elif filename.startswith('gnupg-kbx:'):
+        type_ = ResourceTypes.KEYBOX
+        filename = filename[11:]
+    filename = os.path.abspath(filename)
+
+    if type_ == ResourceTypes.NONE:
+        magic = None
+        try:
+            fh = open(filename, 'rb')
+            magic = fh.read(4)
+        except OSError:
+            type_ = ResourceTypes.KEYRING
+        else:
+            if magic in GDBM_MAGIC:
+                type_ = ResourceTypes.GDBM
+            elif fh.read(4)[:1] == b'\x01' and fh.read(4) == b'KBXf':
+                type_ = ResourceTypes.KEYBOX
+            else:
+                type_ = ResourceTypes.KEYRING
+            fh.close()
+
+    if type_ == ResourceTypes.KEYBOX:
+        raise ValueError('Unsupported resource type, Keybox')
+    elif type_ == ResourceTypes.KEYRING:
+        return Keyring(filename, force, secret, read_only, default)
+    elif type_ == ResourceTypes.GDBM:
+        return GDBM(filename, force, secret, read_only, default)
+    else:
+        raise ValueError('Unknown resource type')
+
+
+class GPGDatabase(object):
 
     _resources = None
 
     def __init__(self):
-        self._resources = {}
+        self._resources = OrderedDict()
+
+    def load_default_resources(self, force=False, read_only=False):
+        for (filename, secret) in DEFAULT_RESOURCES:
+            self.add_resource(filename, force=force, primary=False,
+                              default=True, read_only=read_only,
+                              secret=secret)
 
     def add_resource(self, filename, force=False, primary=False,
                      default=False, read_only=False, secret=False):
-        resource = get_resource(filename, force, secret, read_only)
-        resource = self.register_resource(resource.filename, resource)
+        resource = get_resource(filename, force, secret, read_only, default)
+        resource = self.register_resource(resource.filename, resource, primary)
         return resource
 
-    def register_resource(self, name, resource):
-        return self._resources.setdefault(name, resource)
+    def add_key(self, key):
+        if isinstance(key, TransferablePublicKey):
+            for resource in self._resources.values():
+                if not resource.secret:
+                    resource.add_transferrable_key(key)
+                    break
+        elif isinstance(key, TransferableSecretKey):
+            for resource in self._resources.values():
+                if resource.secret:
+                    resource.add_transferrable_key(key)
+                    break
+        else:
+            raise TypeError
 
-    def search(self):
-        pass
+    def delete_key(self, key):
+        if isinstance(key, TransferablePublicKey):
+            for resource in self._resources.values():
+                if not resource.secret:
+                    resource.delete_transferrable_key(key)
+                    break
+        elif isinstance(key, TransferableSecretKey):
+            for resource in self._resources.values():
+                if resource.secret:
+                    resource.delete_transferrable_key(key)
+                    break
+        else:
+            raise TypeError
+
+    def update_key(self, key):
+        if isinstance(key, TransferablePublicKey):
+            for resource in self._resources.values():
+                if not resource.secret:
+                    resource.update_transferrable_key(key)
+                    break
+        elif isinstance(key, TransferableSecretKey):
+            for resource in self._resources.values():
+                if resource.secret:
+                    resource.update_transferrable_key(key)
+                    break
+        else:
+            raise TypeError
+
+    def register_resource(self, name, resource, primary):
+        resource = self._resources.setdefault(name, resource)
+        if primary:
+            self._resources.move_to_end(name, last=False)
+        return resource
+
+    def _matches_user_id(self, key, user_id):
+        match = False
+        for uid in key.user_ids:
+            if user_id.lower() in uid.user_id.lower():
+                match = True
+                break
+        return match
+
+    def keys(self):
+        for resource in self._resources.values():
+            yield from resource.keys()
+
+    def search(self, fingerprint=None, key_id=None, user_id=None):
+        results = []
+        if fingerprint is None and key_id is None and user_id is None:
+            return results
+        for resource in self._resources.values():
+            if fingerprint or key_id:
+                try:
+                    key = resource.get_transferrable_key(fingerprint or key_id)
+                except KeyError:
+                    continue
+                if user_id is not None:
+                    if self._matches_user_id(key, user_id):
+                        results.append(key)
+                else:
+                    results.append(key)
+            else:
+                # User ID only. Be really dumb and iterate.
+                for key in resource.values():
+                    if self._matches_user_id(key, user_id):
+                        results.append(key)
+        return results
