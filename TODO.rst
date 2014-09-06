@@ -6,8 +6,6 @@ Functionality in priority order.
 Keys
 ----
 
- * Parse a key
- * Serialize a key
  * Generate a key pair
  * Verify a signature
  * Sign data
@@ -18,15 +16,6 @@ Keys
  * Edit a key
  * Generate a revocation certificate
 
-Key database
-------------
-
- * Import a key
- * Export a key
- * List keys
- * Search keys
- * Remove a key
-
 Key servers
 -----------
 
@@ -34,4 +23,3 @@ Key servers
  * Send a key
  * Search keys
  * Refresh keys
-
