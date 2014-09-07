@@ -37,15 +37,12 @@ from pgp.exceptions import SignatureCreatedBeforeContent
 from pgp.exceptions import SignatureDigestMismatch
 from pgp.exceptions import SignatureVerificationFailed
 from pgp.exceptions import SignedByRevokedKey
-from pgp.exceptions import SignatureHasExpired
 from pgp.exceptions import SigningKeyCreatedInTheFuture
 from pgp.exceptions import SigningKeyHasBeenRevoked
 from pgp.exceptions import SigningKeyHasExpired
 from pgp.exceptions import UnexpectedSignatureType
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
 from pgp.packets import constants
-from pgp.transferrable_keys import PublicSubkey
-from pgp.transferrable_keys import SecretSubkey
 from pgp.transferrable_keys import TransferablePublicKey
 from pgp.transferrable_keys import TransferableSecretKey
 
@@ -80,10 +77,6 @@ def check_back_signatures(key, subkey_binding_signature, strict=False):
             target = subkey_binding_signature.target()
             if not target:
                 continue
-            if isinstance(target, PublicSubkey):
-                target_type = constants.PUBLIC_SUBKEY_PACKET_TYPE
-            elif isinstance(target, SecretSubkey):
-                target_type = constants.SECRET_SUBKEY_PACKET_TYPE
             hash_ = utils.hash_packet_for_signature(
                         key.to_packet(),
                         sig.signature_type,
@@ -115,7 +108,6 @@ def check_signature_values(key, signature, strict=False):
     if key.creation_time > signature.creation_time:
         raise SignatureCreatedBeforeContent()
 
-    sig_expired = False
     key_expired = False
     key_revoked = False
     current_time = datetime.datetime.now()
@@ -127,16 +119,6 @@ def check_signature_values(key, signature, strict=False):
 
     if sig_creation_time > current_time:
         raise SignatureCreatedInTheFuture()
-
-    sig_expires_seconds = signature.expiration_time or 0
-    if sig_expires_seconds:
-        if ((sig_creation_time + sig_expires_seconds)
-            > current_time):
-
-            if strict:
-                raise SignatureHasExpired(sig_creation_time +
-                                          sig_expires_seconds)
-            sig_expired = True
 
     key_expiration_time = key.expiration_time
     if key_expiration_time is not None and key_expiration_time < current_time:
@@ -177,7 +159,7 @@ def check_signature_values(key, signature, strict=False):
                         raise SigningKeyHasBeenRevoked(key.key_id)
                     key_revoked = True
 
-    return sig_expired, key_expired, key_revoked
+    return key_expired, key_revoked
 
 
 def get_hashed_subpacket_data(signature):
@@ -226,7 +208,7 @@ def check_signature(key, signature, hash_, strict=False):
     the data it claims to sign.
     """
 
-    sig_expired, key_expired, key_revoked = \
+    key_expired, key_revoked = \
             check_signature_values(key, signature, strict)
 
     # Perform the quick check first before busting out the public key
@@ -238,19 +220,19 @@ def check_signature(key, signature, hash_, strict=False):
     key_verify(key.public_key_algorithm, hash_, signature,
                key)
 
-    return sig_expired, key_expired, key_revoked
+    return key_expired, key_revoked
 
 
 def validate_key_signature(signature, hash_, key, strict=False):
     """Validates whether the signature of a key is valid."""
 
-    sig_expired, key_expired, key_revoked = \
+    key_expired, key_revoked = \
             check_signature(key, signature, hash_, strict)
     parent = key.public_key_parent
     if parent:
         check_back_signatures(key, signature)
 
-    return sig_expired, key_expired, key_revoked
+    return key_expired, key_revoked
 
 
 def check_revocation_keys(key, signature, hash_, signing_key,
@@ -279,6 +261,7 @@ def validate_signature(target, signature, signing_key, public_key=None,
     hashed_subpacket_data = get_hashed_subpacket_data(
                                 signature
                                 )
+    sig_type = signature.signature_type
     hash_ = utils.hash_packet_for_signature(
                 target.to_packet(),
                 signature.signature_type,
@@ -289,7 +272,6 @@ def validate_signature(target, signature, signing_key, public_key=None,
                 public_key.to_packet(),
                 hashed_subpacket_data
                 )
-    sig_type = signature.signature_type
     result = False, False
     if sig_type == constants.KEY_REVOCATION_SIGNATURE:
         # public key revocation
@@ -322,6 +304,24 @@ def validate_signature(target, signature, signing_key, public_key=None,
     elif sig_type == constants.PRIMARY_KEY_BINDING_SIGNATURE:
         # Backsignature, we shouldn't have this here
         raise UnexpectedSignatureType(constants.PRIMARY_KEY_BINDING_SIGNATURE)
+    elif sig_type == constants.CERTIFICATION_REVOCATION_SIGNATURE:
+        revocation_keys = [
+            rev_key.fingerprint[-16:]
+            for rev_key
+            in signature.target.revocation_keys
+            ]
+        if (
+                signing_key.key_id not in signature.target.issuer_key_ids
+                and signing_key.key_id not in revocation_keys
+                ):
+            raise SignatureVerificationFailed('Signature cannot be revoked by this key')
+        if signature.target.revocable is False:
+            raise SignatureVerificationFailed('Signature cannot be revoked')
+        if signature.target.creation_time > signature.creation_time:
+            raise SignatureCreatedBeforeContent()
+        # TODO: FIX THIS
+        #result = check_signature(signing_key, signature, hash_,
+        #                         strict)
     else:
         # 0x00, 0x01, 0x02, 0x30, 0x40 & 0x50 do not apply to public keys
         raise UnexpectedSignatureType(sig_type)
@@ -339,20 +339,29 @@ def validate_signatures(target, db, strict=False):
         pk = target
 
     for sig in target.signatures:
-        if sig.validated:
+        if sig.validated is not None:
             continue
         for signing_key_id in sig.issuer_key_ids:
-            signing_keys = db.search(key_id=signing_key_id)
+            if pk.key_id == signing_key_id:
+                # Shortcut for selfsig
+                signing_keys = [pk]
+            else:
+                signing_keys = db.search(key_id=signing_key_id)
             if signing_keys:
                 signing_key = signing_keys[0]
                 try:
-                    validate_signature(target, sig, signing_key, pk, strict)
+                    key_expired, key_revoked = \
+                        validate_signature(target, sig, signing_key, pk, strict)
                 except InvalidSignature:
                     sig.validated = False
+                    break
                 except CannotValidateSignature:
                     sig.validated = None
                 else:
                     sig.validated = True
+                    break
+                sig.issuer_key_expired = key_expired
+                sig.issuer_key_revoked = key_revoked
 
     if isinstance(target, (TransferablePublicKey, TransferableSecretKey)):
         for uid in target.user_ids:

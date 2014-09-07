@@ -35,15 +35,127 @@ from pgp.user_id import parse_user_id
 from pgp import utils
 
 
+class SignedMixin(object):
+
+    @property
+    def self_signatures(self):
+        result = []
+        for s in self.signatures:
+            key_ids = set([self.primary_public_key.key_id])
+            key_ids |= set([
+                subkey.key_id for subkey in
+                self.primary_public_key.subkeys
+                ])
+            if key_ids & set(s.issuer_key_ids):
+                # is selfsig
+                result.append(s)
+        return result
+
+    @property
+    def current_self_signatures(self):
+        result = []
+        for s in self.self_signatures:
+            if (
+                    s.signature_type in self._self_sig_types
+                    and not s.revoked
+                    and not s.expired
+                    and not s.issuer_key_expired
+                    and not s.issuer_key_revoked
+                    ):
+                result.append(s)
+        return result
+
+    @property
+    def revocation_signatures(self):
+        result = []
+        for s in self.self_signatures:
+            if (
+                    s.signature_type in self._revocation_sig_types
+                    and not s.revoked
+                    and not s.expired
+                    and not s.issuer_key_expired
+                    and not s.issuer_key_revoked
+                    ):
+                result.append(s)
+        return result
+
+    @property
+    def revoked(self):
+        return bool(self.revocation_signatures)
+
+
+    def get_most_recent_selfsig(self, revocation=False):
+        last_signature_created = datetime.datetime(1900, 1, 1)
+        most_recent_selfsig = None
+        for signature in self.signatures:
+            if not signature.is_self_signature():
+                continue
+            if not revocation and signature.signature_type not in self._self_sig_types:
+                continue
+            if revocation and signature.signature_type not in self._revocation_sig_types:
+                continue
+            if last_signature_created < signature.creation_time:
+                most_recent_selfsig = signature
+
+        return most_recent_selfsig
+
+    @staticmethod
+    def __selfsig_attribute(name, revocation=False):
+        def getter(self):
+            if self.version >= 4:
+                most_recent_selfsig = self.get_most_recent_selfsig(self, revocation)
+                result = getattr(most_recent_selfsig, name, None)
+
+            return result
+
+        def setter(self, value):
+            if self.version >= 4:
+                most_recent_selfsig = self.get_most_recent_selfsig(self, revocation)
+                setattr(most_recent_selfsig, name, value)
+
+        return property(getter, setter)
+
+    __selfsig_attribute = __selfsig_attribute.__func__
+
+    revocation_reason = __selfsig_attribute('revocation_reason', True)
+    revocation_code = __selfsig_attribute('revocation_code', True)
+    expiration_time = __selfsig_attribute('key_expiration_time')
+    preferred_compression_algorithms = \
+        __selfsig_attribute('preferred_compression_algorithms', [])
+    preferred_hash_algorithms = \
+        __selfsig_attribute('preferred_hash_algorithms', [])
+    preferred_symmetric_algorithms = \
+        __selfsig_attribute('preferred_symmetric_algorithms', [])
+    revocation_keys = \
+        __selfsig_attribute('revocation_keys', [])
+    key_server_should_not_modify = \
+        __selfsig_attribute('key_server_should_not_modify')
+    preferred_key_server = __selfsig_attribute('preferred_key_server')
+    primary_user_id = __selfsig_attribute('primary_user_id')
+    policy_uri = __selfsig_attribute('policy_uri')
+    may_certify_others = __selfsig_attribute('may_certify_others')
+    may_sign_data = __selfsig_attribute('may_sign_data')
+    may_encrypt_comms = __selfsig_attribute('may_encrypt_comms')
+    may_encrypt_storage = __selfsig_attribute('may_encrypt_comms')
+    may_be_used_for_auth = __selfsig_attribute('may_encrypt_comms')
+    may_have_been_split = __selfsig_attribute('may_have_been_split')
+    may_have_multiple_owners = \
+        __selfsig_attribute('may_have_multiple_owners')
+    supports_modification_detection = \
+        __selfsig_attribute('may_have_multiple_owners')
+
+    del __selfsig_attribute
+
+
 class KeySignature(BaseSignature):
 
     def is_self_signature(self):
-        target = self.target
+        parent = self.parent
         own_key_ids = []
-        if isinstance(target, (TransferablePublicKey, TransferableSecretKey)):
-            primary_public_key = target
+        if isinstance(parent, (TransferablePublicKey, TransferableSecretKey)):
+            primary_public_key = parent
         else:
-            primary_public_key = target.primary_public_key
+            primary_public_key = parent.primary_public_key
 
         own_key_ids.append(primary_public_key.key_id)
         for subkey in primary_public_key.subkeys:
@@ -53,10 +165,10 @@ class KeySignature(BaseSignature):
 
 
 @implementer(interfaces.IPublicKey)
-class BasePublicKey(object):
+class BasePublicKey(SignedMixin):
 
-    _self_sig_type = C.SIGNATURE_DIRECTLY_ON_A_KEY
-    _revocation_sig_type = C.KEY_REVOCATION_SIGNATURE
+    _self_sig_types = (C.SIGNATURE_DIRECTLY_ON_A_KEY,)
+    _revocation_sig_types = (C.KEY_REVOCATION_SIGNATURE,)
     _PacketClass = packets.PublicKeyPacket
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
     primary_public_key = None
@@ -146,63 +258,23 @@ class BasePublicKey(object):
         self.group_order_q = group_order_q
         self.key_value_y = key_value_y
         self.creation_time = creation_time
-        self.expiration_time = expiration_time
+        self._expiration_time = expiration_time
 
     def __repr__(self):
         return '<{0} 0x{1}>'.format(self.__class__.__name__,
                                     self.key_id)
 
-    def is_revoked(self):
-        for signature in self.signatures:
-            if not signature.is_self_signature():
-                continue
-            if signature.type != self._revocation_sig_type:
-                continue
-            return True
-
-        return False
-
-    def is_expired(self):
-        return self.expiration_time < datetime.datetime.now()
-
     def _get_expiration_time(self):
-        expires = None
-        if self.version < 4:
-            expires = self._expiration_time
-        else:
-            last_signature_created = 0
-            for signature in self.signatures:
-                if not signature.is_self_signature():
-                    continue
-                if signature.type != self._self_sig_type:
-                    continue
-                if (signature.key_expiration_time is not None
-                    and last_signature_created < signature.creation_time):
-                    expires = signature.key_expiration_time
+        if self.version in (2, 3):
+            return self._expiration_time
+        elif self.version >= 4:
+            return super(BasePublicKey, self).expiration_time
 
-        return expires
-
-    def _set_expiration_time(self, expiration_time):
-        if self.version < 4:
-            self._expiration_time = expiration_time
-        else:
-            last_signature_created = 0
-            most_recent_selfsig = None
-            for signature in self.signatures:
-                if not signature.is_self_signature():
-                    continue
-                if signature.type != self._self_sig_type:
-                    continue
-                if last_signature_created < signature.creation_time:
-                    most_recent_selfsig = signature
-
-            if most_recent_selfsig is not None:
-                most_recent_selfsig.key_expiration_time = \
-                    expiration_time
-            elif expiration_time:
-                raise ValueError(
-                        "Cannot set expiration time on V4 key with no "
-                        "self-signature.")
+    def _set_expiration_time(self, value):
+        if self.version in (2, 3):
+            self._expiration_time = value
+        elif self.version >= 4:
+            super(BasePublicKey, self).expiration_time = value
 
     expiration_time = property(_get_expiration_time, _set_expiration_time)
 
@@ -265,55 +337,6 @@ class BasePublicKey(object):
             raise ValueError
 
         return SHA.new(sexp).hexdigest().upper()
-
-    @staticmethod
-    def __selfsig_attribute(name, default=None):
-        def getter(self):
-            result = default
-            if self.version >= 4:
-                last_signature_created = 0
-                most_recent_selfsig = None
-                for signature in self.signatures:
-                    if not signature.is_self_signature():
-                        continue
-                    if signature.type != self._self_sig_type:
-                        continue
-                    if last_signature_created < signature.creation_time:
-                        most_recent_selfsig = signature
-
-                result = getattr(most_recent_selfsig, name, default)
-
-            return result
-
-        return property(getter)
-
-    __selfsig_attribute = __selfsig_attribute.__func__
-
-    preferred_compression_algorithms = \
-        __selfsig_attribute('preferred_compression_algorithms', [])
-    preferred_hash_algorithms = \
-        __selfsig_attribute('preferred_hash_algorithms', [])
-    preferred_symmetric_algorithms = \
-        __selfsig_attribute('preferred_symmetric_algorithms', [])
-    revocation_keys = \
-        __selfsig_attribute('revocation_keys', [])
-    key_server_should_not_modify = \
-        __selfsig_attribute('key_server_should_not_modify', False)
-    preferred_key_server = __selfsig_attribute('preferred_key_server')
-    primary_user_id = __selfsig_attribute('primary_user_id')
-    policy_uri = __selfsig_attribute('policy_uri')
-    may_certify_others = __selfsig_attribute('may_certify_others', True)
-    may_sign_data = __selfsig_attribute('may_sign_data', True)
-    may_encrypt_comms = __selfsig_attribute('may_encrypt_comms', True)
-    may_encrypt_storage = __selfsig_attribute('may_encrypt_comms', True)
-    may_be_used_for_auth = __selfsig_attribute('may_encrypt_comms', True)
-    may_have_been_split = __selfsig_attribute('may_have_been_split', True)
-    may_have_multiple_owners = \
-        __selfsig_attribute('may_have_multiple_owners', True)
-    supports_modification_detection = \
-        __selfsig_attribute('may_have_multiple_owners', False)
-
-    del __selfsig_attribute
 
 
 class BaseSecretKey(BasePublicKey):
@@ -424,8 +447,8 @@ class BaseSecretKey(BasePublicKey):
 
 class PublicSubkey(BasePublicKey):
 
-    _self_sig_type = C.SUBKEY_BINDING_SIGNATURE
-    _revocation_sig_type = C.SUBKEY_REVOCATION_SIGNATURE
+    _self_sig_types = (C.SUBKEY_BINDING_SIGNATURE,)
+    _revocation_sig_types = (C.SUBKEY_REVOCATION_SIGNATURE,)
     _PacketClass = packets.PublicSubkeyPacket
 
     @classmethod
@@ -455,10 +478,16 @@ class SecretSubkey(PublicSubkey, BaseSecretKey):
 
 
 @implementer(interfaces.IUserID)
-class UserID(object):
+class UserID(SignedMixin):
 
     signatures = None
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
+    _self_sig_types = (C.GENERIC_CERTIFICATION,
+                       C.CASUAL_CERTIFICATION,
+                       C.PERSONA_CERTIFICATION,
+                       C.POSITIVE_CERTIFICATION)
+    _revocation_sig_types = (C.CERTIFICATION_REVOCATION_SIGNATURE,)
+    version = 4
 
     @classmethod
     def from_packet(cls, primary_public_key, packet):
@@ -519,9 +548,6 @@ class UserID(object):
 
     user_comment = property(_get_user_comment, _set_user_comment)
 
-    def is_primary_user_id(self):
-        pass
-
 
 @implementer(interfaces.IUserAttributeContentItem)
 class UserAttributeContentItem(object):
@@ -560,11 +586,17 @@ class UserAttributeContentItem(object):
 
 
 @implementer(interfaces.IUserAttribute)
-class UserAttribute(object):
+class UserAttribute(SignedMixin):
 
     content_items = None
     signatures = None
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
+    _self_sig_types = (C.GENERIC_CERTIFICATION,
+                       C.CASUAL_CERTIFICATION,
+                       C.PERSONA_CERTIFICATION,
+                       C.POSITIVE_CERTIFICATION)
+    _revocation_sig_types = (C.CERTIFICATION_REVOCATION_SIGNATURE,)
+    version = 4
 
     @classmethod
     def from_packet(cls, primary_public_key, packet):

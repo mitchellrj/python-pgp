@@ -24,6 +24,7 @@ from zope.interface import provider
 
 from pgp import interfaces
 from pgp import exceptions
+from pgp import utils
 from pgp.crc24 import crc24
 from pgp.packets import constants as C
 from pgp.packets import packets
@@ -120,6 +121,8 @@ class BaseSignature(object):
     hash2 = None
     signature_values = None
     validated = None
+    issuer_key_expired = None
+    issuer_key_revoked = None
 
     # Packet level options
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
@@ -280,6 +283,9 @@ class BaseSignature(object):
         return datetime.datetime.fromtimestamp(value)
 
     def _set_creation_time(self, dt):
+        # expiration time is relative to creation time, make sure it's kept in
+        # sync with creation time.
+        exp_time = self.signature__expiration_time
         value = time.mktime(dt.timetuple())
         if self.version in (2, 3):
             self._creation_time = value
@@ -287,6 +293,7 @@ class BaseSignature(object):
             self._update_subpacket_values(
                 C.CREATION_TIME_SUBPACKET_TYPE,
                 'time', value)
+        self.signature__expiration_time = exp_time
 
     creation_time = property(_get_creation_time, _set_creation_time)
 
@@ -321,17 +328,31 @@ class BaseSignature(object):
 
     issuer_key_ids = property(_get_issuer_key_ids, _set_issuer_key_ids)
 
-    def _get_expiration_time(self):
-        return self._get_subpacket_values(
+    def _get_signature_expiration_time(self):
+        seconds = self._get_subpacket_values(
             C.EXPIRATION_SECONDS_SUBPACKET_TYPE,
             'time')
+        # "If this is not present or has a value of zero, the key never
+        #  expires."
+        if not seconds:
+            return None
+        return self.creation_time + datetime.timedelta(seconds=seconds)
 
-    def _set_expiration_time(self, value):
-        self._update_subpacket_values(
-            C.EXPIRATION_SECONDS_SUBPACKET_TYPE,
-            'time', value)
+    def _set_signature_expiration_time(self, dt):
+        if dt is None:
+            value = 0
+        elif dt < self.creation_time:
+            raise ValueError
+        else:
+            td = dt - self.creation_time
+            value = td.seconds + td.days * 86400
+            self._update_subpacket_values(
+                C.EXPIRATION_SECONDS_SUBPACKET_TYPE,
+                'time', value)
 
-    expiration_time = property(_get_expiration_time, _set_expiration_time)
+    signature_expiration_time = property(
+        _get_signature_expiration_time,
+        _set_signature_expiration_time)
 
     def _get_exportable(self):
         return self._get_subpacket_values(
@@ -500,18 +521,30 @@ class BaseSignature(object):
     embedded_signatures = property(_get_embedded_signatures,
                                    _set_embedded_signatures)
 
-    def _get_key_expiration_seconds(self):
-        return self._get_subpacket_values(
+    def _get_key_expiration_time(self):
+        seconds = self._get_subpacket_values(
             C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
             'time')
+        # "If this is not present or has a value of zero, the key never
+        #  expires."
+        if not seconds:
+            return None
+        return self.parent.creation_time + datetime.timedelta(seconds=seconds)
 
-    def _set_key_expiration_seconds(self, value):
-        self._update_subpacket_values(
-            C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
-            'time', value)
+    def _set_key_expiration_time(self, dt):
+        if dt is None:
+            value = 0
+        elif dt < self.parent.creation_time:
+            raise ValueError
+        else:
+            td = dt - self.parent.creation_time
+            value = td.seconds + td.days * 86400
+            self._update_subpacket_values(
+                C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
+                'time', value)
 
-    key_expiration_seconds = property(_get_key_expiration_seconds,
-                                      _set_key_expiration_seconds)
+    key_expiration_time = property(_get_key_expiration_time,
+                                   _set_key_expiration_time)
 
     def _get_preferred_compression_algorithms(self):
         return self._get_subpacket_values(
@@ -738,24 +771,68 @@ class BaseSignature(object):
         _get_may_have_multiple_owners, _set_may_have_multiple_owners)
 
     @property
-    def target(self):
-        # Resolve weakref
+    def parent(self):
         return self._target_ref()
 
-    def is_expired(self):
-        pass
+    @property
+    def revocation(self):
+        return self.signature_type in (
+            C.CERTIFICATION_REVOCATION_SIGNATURE,
+            C.KEY_REVOCATION_SIGNATURE,
+            C.SUBKEY_REVOCATION_SIGNATURE)
 
-    def is_revoked(self):
-        pass
+    @property
+    def target(self):
+        parent = self.parent
+        # get target subpacket
+        subpackets = self._get_subpackets(C.TARGET_SUBPACKET_TYPE)
+        for sub in subpackets:
+            expected_digest = sub.hash
+            hash_algorithm = sub.hash_algorithm
+            pub_algorithm = sub.public_key_algorithm
+            for sig in parent.signatures:
+                digest = utils.hash_packet_for_signature(
+                    sig.to_packet(), self.signature_type,
+                    self.signature_version,
+                    hash_algorithm,
+                    self.creation_time,
+                    pub_algorithm,
+                    )
+                if digest == expected_digest:
+                    return sig
 
-    def issuer_key_is_expired(self):
-        pass
+        # Fallback
+        revocable = []
+        for sig in parent.signatures:
+            if sig is self:
+                continue
+            if set(self.issuer_key_ids) & set(sig.issuer_key_ids):
+                revocable.append(sig)
+        if len(revocable) == 1:
+            return revocable[0]
 
-    def issuer_key_is_revoked(self):
-        pass
+    @property
+    def expired(self):
+        if self.signature_expiration_time:
+            return datetime.datetime.now() > self.signature_expiration_time
+        return False
 
-    def signature_target(self):
-        pass
+    @property
+    def revoked(self):
+        if self.signature_type in (
+                C.SIGNATURE_DIRECTLY_ON_A_KEY,
+                C.SUBKEY_BINDING_SIGNATURE,
+                C.GENERIC_CERTIFICATION,
+                C.CASUAL_CERTIFICATION,
+                C.PERSONA_CERTIFICATION,
+                C.POSITIVE_CERTIFICATION,
+                ):
+            if not self.parent:
+                return None
+            for s in self.parent.signatures:
+                if s.revocation and s.target == self:
+                    return True
+        return False
 
     @property
     def issuer_user_name(self):

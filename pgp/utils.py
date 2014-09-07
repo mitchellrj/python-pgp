@@ -46,6 +46,7 @@ from pgp.cipher import wrapper as syncable_cipher_wrapper
 from pgp.exceptions import PublicKeyAlgorithmCannotSign
 from pgp.exceptions import UnsupportedDigestAlgorithm
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
+from pgp.packets import constants
 
 
 hash_lengths = {
@@ -422,34 +423,43 @@ def hash_packet_for_signature(packet_for_hash,
                               signature_type, signature_version,
                               hash_algorithm_type, signature_creation_time,
                               pub_algorithm_type, public_key_packet=None,
-                              hashed_subpacket_data=None):
+                              hashed_subpacket_data=None,
+                              fake_hash_algorithm_type=None):
     hash_ = get_hash_instance(hash_algorithm_type)
 
     public_key_packet_data = None
     if public_key_packet is not None:
         public_key_packet_data = public_key_packet.content
     packet_data_for_hash = packet_for_hash.content
-    if signature_type in (0x1f, 0x20):
+    if signature_type in (constants.SIGNATURE_DIRECTLY_ON_A_KEY,
+                          constants.KEY_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
-    elif signature_type in (0x18, 0x19, 0x28):
+    elif signature_type in (constants.SUBKEY_BINDING_SIGNATURE,
+                            constants.PRIMARY_KEY_BINDING_SIGNATURE,
+                            constants.SUBKEY_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
         hash_key(hash_, packet_data_for_hash)
-    elif signature_type == 0x50:
+    elif signature_type == constants.THIRD_PARTY_CONFIRMATION_SIGNATURE:
         hash_.update(b'\x88')
         hash_.update(len(packet_data_for_hash))
         hash_.update(packet_data_for_hash)
-    elif signature_type in (0x00, 0x01):
+    elif signature_type in (constants.SIGNATURE_OF_A_BINARY_DOCUMENT,
+                            constants.SIGNATURE_OF_A_CANONICAL_TEXT_DOCUMENT):
         hash_.update(packet_data_for_hash)
-    elif signature_type == 0x02:
+    elif signature_type == constants.STANDALONE_SIGNATURE:
         pass
-    elif signature_type in (0x10, 0x11, 0x12, 0x13, 0x30):
+    elif signature_type in (constants.GENERIC_CERTIFICATION,
+                            constants.CASUAL_CERTIFICATION,
+                            constants.PERSONA_CERTIFICATION,
+                            constants.POSITIVE_CERTIFICATION,
+                            constants.CERTIFICATION_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
         hash_user_data(hash_, packet_for_hash.type, packet_data_for_hash,
                        signature_version)
-    elif signature_type == 0x40:
+    elif signature_type == constants.TIMESTAMP_SIGNATURE:
         # Timestamp signatures are poorly defined and semi-deprecated.
         #
         # RFC 1991 defines it as "a signature of a signature, as a notary seal
@@ -469,7 +479,7 @@ def hash_packet_for_signature(packet_for_hash,
         hash_.update(int_to_4byte(signature_creation_time))
     else:
         hash_.update(bytearray([pub_algorithm_type]))
-        hash_.update(bytearray([hash_algorithm_type]))
+        hash_.update(bytearray([fake_hash_algorithm_type or hash_algorithm_type]))
         hashed_subpacket_length = len(hashed_subpacket_data)
         hash_.update(int_to_2byte(hashed_subpacket_length))
         hash_.update(hashed_subpacket_data)
