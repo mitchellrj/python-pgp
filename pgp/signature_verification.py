@@ -85,14 +85,13 @@ def check_back_signatures(key, subkey_binding_signature, strict=False):
             elif isinstance(target, SecretSubkey):
                 target_type = constants.SECRET_SUBKEY_PACKET_TYPE
             hash_ = utils.hash_packet_for_signature(
-                        target.to_packet(),
-                        target_type,
                         key.to_packet(),
                         sig.signature_type,
                         sig.version,
                         sig.hash_algorithm,
                         sig.creation_time,
                         sig.public_key_algorithm,
+                        target.to_packet(),
                         hashed_subpacket_data
                         )
             try:
@@ -200,10 +199,10 @@ def key_verify(algorithm_type, expected_hash, signature, key):
     signature_values = signature.signature_values
 
     if algorithm_type == 17:
-        key_obj = key_constructor((long(key.prime_p),
-                                   long(key.group_order_q),
+        key_obj = key_constructor((long(key.key_value_y),
                                    long(key.group_generator_g),
-                                   long(key.key_value_y)
+                                   long(key.prime_p),
+                                   long(key.group_order_q)
                                    ))
     elif algorithm_type == 20:
         key_obj = key_constructor((long(key.prime_p),
@@ -234,7 +233,6 @@ def check_signature(key, signature, hash_, strict=False):
     # algorithms
     digest = hash_.digest()
     if bytearray(digest[:2]) != signature.hash2:
-        import pdb; pdb.set_trace()
         raise SignatureDigestMismatch()
 
     key_verify(key.public_key_algorithm, hash_, signature,
@@ -267,7 +265,7 @@ def check_revocation_keys(key, signature, hash_, signing_key,
                                           strict)
 
 
-def validate_signature(public_key, target, signature, signing_key,
+def validate_signature(target, signature, signing_key, public_key=None,
                        strict=False):
     """Returns a tuple of three booleans, the first indicates whether
     the signature has expired, the second indicates if the signing key
@@ -282,13 +280,13 @@ def validate_signature(public_key, target, signature, signing_key,
                                 signature
                                 )
     hash_ = utils.hash_packet_for_signature(
-                public_key.to_packet(),
                 target.to_packet(),
                 signature.signature_type,
                 signature.version,
                 signature.hash_algorithm,
                 signature.creation_time,
                 signature.public_key_algorithm,
+                public_key.to_packet(),
                 hashed_subpacket_data
                 )
     sig_type = signature.signature_type
@@ -336,7 +334,7 @@ def get_target_type(item):
 
 
 def validate_signatures(target, db, strict=False):
-    pk = target.primary_public_key
+    pk = getattr(target, 'primary_public_key', None)
     if pk is None:
         pk = target
 
@@ -348,9 +346,8 @@ def validate_signatures(target, db, strict=False):
             if signing_keys:
                 signing_key = signing_keys[0]
                 try:
-                    validate_signature(pk, target,
-                                       sig, signing_key, strict)
-                except InvalidSignature as e:
+                    validate_signature(target, sig, signing_key, pk, strict)
+                except InvalidSignature:
                     sig.validated = False
                 except CannotValidateSignature:
                     sig.validated = None

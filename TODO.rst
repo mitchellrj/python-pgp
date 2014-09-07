@@ -6,7 +6,6 @@ Functionality in priority order.
 Keys
 ----
 
- * Verify a signature
  * Generate a key pair
  * Sign data
  * Encrypt data
@@ -23,3 +22,8 @@ Key servers
  * Send a key
  * Search keys
  * Refresh keys
+
+Key database
+------------
+
+ * Handle trust

@@ -621,7 +621,7 @@ class PublicKeyPacket(Packet):
 
         return offset, (
                 version, creation_time, public_key_algorithm, expiration_days,
-                modulus, exponent, prime, group_generator, group_order,
+                modulus, exponent, prime, group_order, group_generator,
                 key_value)
 
     @classmethod
@@ -634,8 +634,8 @@ class PublicKeyPacket(Packet):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_generator=None,
-                 group_order=None, key_value=None):
+                 exponent=None, prime=None, group_order=None, group_generator=None,
+                 key_value=None):
         Packet.__init__(self, header_type, constants.PUBLIC_KEY_PACKET_TYPE)
         self.version = version
         self.creation_time = creation_time
@@ -644,8 +644,8 @@ class PublicKeyPacket(Packet):
         self.modulus = modulus
         self.exponent = exponent
         self.prime = prime
-        self.group_generator = group_generator
         self.group_order = group_order
+        self.group_generator = group_generator
         self.key_value = key_value
 
     def __eq__(self, other):
@@ -717,8 +717,8 @@ class PublicSubkeyPacket(PublicKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_generator=None,
-                 group_order=None, key_value=None):
+                 exponent=None, prime=None, group_order=None,
+                 group_generator=None, key_value=None):
         Packet.__init__(self, header_type,
                         constants.PUBLIC_SUBKEY_PACKET_TYPE)
         self.version = version
@@ -780,8 +780,8 @@ class SecretKeyPacket(PublicKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_generator=None,
-                 group_order=None, key_value=None, s2k_specification=None,
+                 exponent=None, prime=None, group_order=None,
+                 group_generator=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
                  checksum=None, hash_=None, passphrase=None, exponent_d=None,
                  prime_p=None, prime_q=None, multiplicative_inverse_u=None,
@@ -997,8 +997,8 @@ class SecretSubkeyPacket(SecretKeyPacket):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_generator=None,
-                 group_order=None, key_value=None, s2k_specification=None,
+                 exponent=None, prime=None, group_order=None,
+                 group_generator=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
                  checksum=None, hash_=None, passphrase=None, exponent_d=None,
                  prime_p=None, prime_q=None, multiplicative_inverse_u=None,

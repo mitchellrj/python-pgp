@@ -122,9 +122,6 @@ def verify_hash(pub_algorithm_type, public_key, hash_, values):
     elif pub_algorithm_type == 17:
         # DSA
         q = public_key.q
-        if q % 8:
-            # TODO: complete this
-            raise ValueError
         qbits = int(math.floor(float(math.log(q, 2)))) + 1
         qbytes = int(math.ceil(qbits / 8.0))
 
@@ -421,17 +418,22 @@ def hash_user_data(hash_, target_type, target_packet_data, signature_version):
         hash_.update(target_packet_data)
 
 
-def hash_packet_for_signature(public_key_packet, packet_for_hash,
+def hash_packet_for_signature(packet_for_hash,
                               signature_type, signature_version,
                               hash_algorithm_type, signature_creation_time,
-                              pub_algorithm_type, hashed_subpacket_data=None):
+                              pub_algorithm_type, public_key_packet=None,
+                              hashed_subpacket_data=None):
     hash_ = get_hash_instance(hash_algorithm_type)
 
-    public_key_packet_data = public_key_packet.content
+    public_key_packet_data = None
+    if public_key_packet is not None:
+        public_key_packet_data = public_key_packet.content
     packet_data_for_hash = packet_for_hash.content
     if signature_type in (0x1f, 0x20):
+        assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
     elif signature_type in (0x18, 0x19, 0x28):
+        assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
         hash_key(hash_, packet_data_for_hash)
     elif signature_type == 0x50:
@@ -443,6 +445,7 @@ def hash_packet_for_signature(public_key_packet, packet_for_hash,
     elif signature_type == 0x02:
         pass
     elif signature_type in (0x10, 0x11, 0x12, 0x13, 0x30):
+        assert public_key_packet_data is not None
         hash_key(hash_, public_key_packet_data)
         hash_user_data(hash_, packet_for_hash.type, packet_data_for_hash,
                        signature_version)

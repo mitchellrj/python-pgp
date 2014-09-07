@@ -178,11 +178,16 @@ class BaseSignature(object):
         return packet
 
     def __repr__(self):
-        return '<{0} {1} by {2} {3}at 0x{2:x}>'.format(
+        validation = ''
+        if self.validated is True:
+            validation = 'validated '
+        elif self.validated is False:
+            validation = 'invalid '
+        return '<{0} {1} by {2} {3}at 0x{4:x}>'.format(
             self.__class__.__name__,
             C.human_signature_types.get(self.signature_type, 'Unknown'),
             self.issuer_key_ids[0],
-            'validated ' if self.validated else '',
+            validation,
             id(self))
 
     def __init__(self, target, version, signature_type, public_key_algorithm,

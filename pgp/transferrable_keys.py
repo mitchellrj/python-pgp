@@ -102,8 +102,8 @@ class BasePublicKey(object):
         return (
             header_format, self.version, creation_time,
             self.public_key_algorithm, expiration_days, self.modulus_n,
-            self.exponent_e, self.prime_p, self.group_generator_g,
-            self.group_order_q, self.key_value_y
+            self.exponent_e, self.prime_p, self.group_order_q,
+            self.group_generator_g, self.key_value_y
             )
 
     def to_packet(self, header_format=None):
