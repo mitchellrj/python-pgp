@@ -17,6 +17,6 @@
 import sys
 
 if sys.version_info >= (3,):
-    from py3 import *
+    from pgp.py3 import *
 else:
-    from py2 import *
+    from pgp.py2 import *

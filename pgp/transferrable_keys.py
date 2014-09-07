@@ -59,6 +59,7 @@ class BasePublicKey(object):
     _revocation_sig_type = C.KEY_REVOCATION_SIGNATURE
     _PacketClass = packets.PublicKeyPacket
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
+    primary_public_key = None
 
     @classmethod
     def _init_args_from_packet(cls, packet):
@@ -579,7 +580,7 @@ class UserAttribute(object):
         if header_format is None:
             header_format = self.packet_header_type
         for item in self.content_items:
-            subpackets.append(item.to_packet(header_format))
+            subpackets.append(item.to_subpacket())
         return packets.UserAttributePacket(header_format, subpackets)
 
     def __init__(self, primary_public_key, content_items, signatures=None):

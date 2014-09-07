@@ -421,13 +421,14 @@ def hash_user_data(hash_, target_type, target_packet_data, signature_version):
         hash_.update(target_packet_data)
 
 
-def hash_packet_for_signature(public_key_packet_data, target_type,
-                              packet_data_for_hash, signature_type,
-                              signature_version, hash_algorithm_type,
-                              signature_creation_time, pub_algorithm_type,
-                              hashed_subpacket_data=None):
+def hash_packet_for_signature(public_key_packet, packet_for_hash,
+                              signature_type, signature_version,
+                              hash_algorithm_type, signature_creation_time,
+                              pub_algorithm_type, hashed_subpacket_data=None):
     hash_ = get_hash_instance(hash_algorithm_type)
 
+    public_key_packet_data = public_key_packet.content
+    packet_data_for_hash = packet_for_hash.content
     if signature_type in (0x1f, 0x20):
         hash_key(hash_, public_key_packet_data)
     elif signature_type in (0x18, 0x19, 0x28):
@@ -443,7 +444,7 @@ def hash_packet_for_signature(public_key_packet_data, target_type,
         pass
     elif signature_type in (0x10, 0x11, 0x12, 0x13, 0x30):
         hash_key(hash_, public_key_packet_data)
-        hash_user_data(hash_, target_type, packet_data_for_hash,
+        hash_user_data(hash_, packet_for_hash.type, packet_data_for_hash,
                        signature_version)
     elif signature_type == 0x40:
         # Timestamp signatures are poorly defined and semi-deprecated.

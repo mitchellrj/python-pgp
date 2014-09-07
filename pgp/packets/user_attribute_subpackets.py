@@ -40,10 +40,10 @@ class UserAttributeSubpacket(object):
     def __bytes__(self):
         data = self.content
         result = bytearray()
-        result.extend(utils.new_packet_length_to_bytes(len(data), False))
+        result.extend(utils.new_packet_length_to_bytes(len(data), False)[0])
         result.append(self.sub_type)
         result.extend(data)
-        return result
+        return bytes(result)
 
 
 class ImageAttributeSubpacket(UserAttributeSubpacket):

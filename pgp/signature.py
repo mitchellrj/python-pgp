@@ -28,7 +28,6 @@ from pgp.crc24 import crc24
 from pgp.packets import constants as C
 from pgp.packets import packets
 from pgp.packets import signature_subpackets
-from pgp.regex import validate_subpacket_regex
 from pgp.user_id import parse_user_id
 
 
@@ -120,6 +119,7 @@ class BaseSignature(object):
     hash_algorithm = None
     hash2 = None
     signature_values = None
+    validated = None
 
     # Packet level options
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
@@ -178,9 +178,12 @@ class BaseSignature(object):
         return packet
 
     def __repr__(self):
-        return '<{0} 0x{1:02x} at 0x{2:x}>'.format(self.__class__.__name__,
-                                                   self.signature_type,
-                                                   id(self))
+        return '<{0} {1} by {2} {3}at 0x{2:x}>'.format(
+            self.__class__.__name__,
+            C.human_signature_types.get(self.signature_type, 'Unknown'),
+            self.issuer_key_ids[0],
+            'validated ' if self.validated else '',
+            id(self))
 
     def __init__(self, target, version, signature_type, public_key_algorithm,
                  hash_algorithm, hash2, signature_values, creation_time=None,
@@ -264,13 +267,15 @@ class BaseSignature(object):
 
     def _get_creation_time(self):
         if self.version in (2, 3):
-            return self._creation_time
+            value = self._creation_time
         elif self.version >= 4:
-            return self._get_subpacket_values(
+            value = self._get_subpacket_values(
                 C.CREATION_TIME_SUBPACKET_TYPE,
                 'time')
+        return datetime.datetime.fromtimestamp(value)
 
-    def _set_creation_time(self, value):
+    def _set_creation_time(self, dt):
+        value = time.mktime(dt.timetuple())
         if self.version in (2, 3):
             self._creation_time = value
         elif self.version >= 4:
@@ -308,6 +313,8 @@ class BaseSignature(object):
                     C.ISSUER_KEY_ID_SUBPACKET_TYPE,
                     'key_id', k
                     )
+
+    issuer_key_ids = property(_get_issuer_key_ids, _set_issuer_key_ids)
 
     def _get_expiration_time(self):
         return self._get_subpacket_values(

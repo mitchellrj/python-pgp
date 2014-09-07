@@ -23,10 +23,9 @@
 OpenPGP signatures found in public key data.
 """
 
-from datetime import datetime
-from datetime import timedelta
-import time
+import datetime
 
+from pgp import utils
 from pgp.compat import raise_with
 from pgp.exceptions import CannotValidateSignature
 from pgp.exceptions import InvalidBackSignature
@@ -44,8 +43,11 @@ from pgp.exceptions import SigningKeyHasBeenRevoked
 from pgp.exceptions import SigningKeyHasExpired
 from pgp.exceptions import UnexpectedSignatureType
 from pgp.exceptions import UnsupportedPublicKeyAlgorithm
-from pgp import utils
-
+from pgp.packets import constants
+from pgp.transferrable_keys import PublicSubkey
+from pgp.transferrable_keys import SecretSubkey
+from pgp.transferrable_keys import TransferablePublicKey
+from pgp.transferrable_keys import TransferableSecretKey
 
 try:
     long
@@ -53,75 +55,81 @@ except NameError:
     long = int
 
 
-def get_revocation_keys(key_data):
-    """Returns a list of revocation key IDs for the given public key
-    data. Does not return revocation keys for subkeys.
+def get_revocation_keys(key):
+    """Returns a list of revocation key IDs for the given key. Does not
+    return revocation keys for subkeys.
     """
 
-    for s in key_data['signatures']:
-        if s['sig_type'] == 0x1f:
-            revkey = s.get('revocation_key', None)
-            # actually a fingerprint
-            if revkey:
-                yield revkey[-16:]
+    for s in key.signatures:
+        if s.signature_type == constants.KEY_REVOCATION_SIGNATURE:
+            revkeys = s.revocation_keys
+            for revkey_info in revkeys:
+                yield revkey_info.fingerprint[-16:]
 
 
-def check_back_signatures(key_data, signature_data, strict=False):
+def check_back_signatures(key, subkey_binding_signature, strict=False):
     """Validates the backsignature of a subkey binding signature if one
     exists.
     """
 
-    for sig in signature_data.get('embedded_signatures', []):
-        if sig['sig_type'] == 0x19:
+    for sig in subkey_binding_signature.embedded_signatures:
+        if sig.signature_type == constants.PRIMARY_KEY_BINDING_SIGNATURE:
             hashed_subpacket_data = get_hashed_subpacket_data(
-                                        sig['_data']
+                                        subkey_binding_signature
                                         )
+            target = subkey_binding_signature.target()
+            if not target:
+                continue
+            if isinstance(target, PublicSubkey):
+                target_type = constants.PUBLIC_SUBKEY_PACKET_TYPE
+            elif isinstance(target, SecretSubkey):
+                target_type = constants.SECRET_SUBKEY_PACKET_TYPE
             hash_ = utils.hash_packet_for_signature(
-                        signature_data['parent']['_data'],
-                        14,
-                        key_data['_data'],
-                        sig['sig_type'],
-                        sig['sig_version'],
-                        sig['hash_algorithm_type'],
-                        sig['creation_time'],
-                        sig['pub_algorithm_type'],
+                        target.to_packet(),
+                        target_type,
+                        key.to_packet(),
+                        sig.signature_type,
+                        sig.version,
+                        sig.hash_algorithm,
+                        sig.creation_time,
+                        sig.public_key_algorithm,
                         hashed_subpacket_data
                         )
             try:
-                check_signature(key_data, sig, hash_, strict)
+                check_signature(key, sig, hash_, strict)
             except InvalidSignature as e:
-                raise_with(InvalidBackSignature(key_data['key_id']), e)
+                raise_with(InvalidBackSignature(target.key_id), e)
 
-    if signature_data.get('may_sign_data', False):
+    if subkey_binding_signature.may_sign_data:
         # "For subkeys that can issue signatures, the subkey binding
         #  signature MUST contain an Embedded Signature subpacket with a
         #  primary key binding signature (0x19) issued by the subkey on
         #  the top-level key."
-        raise MissingBackSignature
+        raise MissingBackSignature()
 
 
-def check_signature_values(key_data, signature_data, strict=False):
+def check_signature_values(key, signature, strict=False):
     """Do basic checks on the signature validity including chronology
     validation, expiration and revocation.
     """
 
-    if key_data['creation_time'] > signature_data['creation_time']:
+    if key.creation_time > signature.creation_time:
         raise SignatureCreatedBeforeContent()
 
     sig_expired = False
     key_expired = False
     key_revoked = False
-    current_time = time.time()
-    key_creation_time = key_data['creation_time']
-    sig_creation_time = signature_data['creation_time']
+    current_time = datetime.datetime.now()
+    key_creation_time = key.creation_time
+    sig_creation_time = signature.creation_time
 
     if key_creation_time > current_time:
-        raise SigningKeyCreatedInTheFuture(key_data['key_id'])
+        raise SigningKeyCreatedInTheFuture(key.key_id)
 
     if sig_creation_time > current_time:
         raise SignatureCreatedInTheFuture()
 
-    sig_expires_seconds = signature_data.get('expiration_seconds', 0)
+    sig_expires_seconds = signature.expiration_time or 0
     if sig_expires_seconds:
         if ((sig_creation_time + sig_expires_seconds)
             > current_time):
@@ -131,97 +139,80 @@ def check_signature_values(key_data, signature_data, strict=False):
                                           sig_expires_seconds)
             sig_expired = True
 
-    key_expiration_time = None
-    key_expiration_days = key_data.get('expiration_days', 0)
-    if not key_expiration_days:
-        # Check signatures for key expiration times
-        for sig_data in key_data.get('signatures', []):
-            key_expiration_seconds = sig_data.get('key_expiration_seconds', 0)
-            if key_expiration_seconds:
-                key_expiration_time = \
-                    key_creation_time + key_expiration_seconds
-                break
-    else:
-        key_expiration_time = time.mktime((
-                datetime.utcfromtimestamp(key_creation_time) +
-                timedelta(days=key_expiration_days)
-            ).timetuple())
-
+    key_expiration_time = key.expiration_time
     if key_expiration_time is not None and key_expiration_time < current_time:
         if strict:
             raise SigningKeyHasExpired(key_expiration_time)
         key_expired = True
 
-    if signature_data.get('revocable', None) is not False:
+    if signature.revocable is not False:
         # "Signatures that are not revocable have any later revocation
         #  signatures ignored. They represent a commitment by the signer that
         #  he cannot revoke his signature for the life of his key. If this
         #  packet is not present, the signature is revocable."
-        revocation_key_parent = key_data.get('parent', key_data)
-        revocation_key = ''
-        for sig_data in key_data['signatures']:
+        revocation_key_parent = key.primary_public_key
+        revocation_keys = []
+        for sig in key.signatures:
             # first look for separate revocation keys
-            if sig_data['sig_type'] in (0x1f, 0x18):
-                revocation_key = sig_data.get('revocation_key', '')[-8:]
-                if revocation_key:
-                    break
-        for sig_data in key_data['signatures']:
-            if sig_data['sig_type'] in (0x20, 0x28):
-                revocation_time = sig_data['creation_time']
-                if revocation_time < key_data['creation_time'] and strict:
-                    raise SignedByRevokedKey(key_data['key_id'])
-                if sig_data['key_id'] == revocation_key_parent['key_id']:
+            if sig.signature_type in (constants.SUBKEY_BINDING_SIGNATURE,
+                                      constants.SIGNATURE_DIRECTLY_ON_A_KEY):
+                revocation_keys.extend([
+                    rev_key.fingerprint[-8:]
+                    for rev_key
+                    in sig.revocation_keys
+                    ])
+        for sig in key.signatures:
+            if sig.signature_type in (constants.SUBKEY_REVOCATION_SIGNATURE,
+                                      constants.KEY_REVOCATION_SIGNATURE):
+                revocation_time = sig.creation_time
+                if revocation_time < key.creation_time and strict:
+                    raise SignedByRevokedKey(key.key_id)
+                if revocation_key_parent.key_id in sig.issuer_key_ids:
                     if strict:
-                        raise SigningKeyHasBeenRevoked(key_data['key_id'])
+                        raise SigningKeyHasBeenRevoked(key.key_id)
                     key_revoked = True
-                elif (revocation_key and
-                      sig_data['key_id'][-8:] == revocation_key):
+                elif (revocation_keys and
+                      key.key_id[-8:] in revocation_keys):
 
                     if strict:
-                        raise SigningKeyHasBeenRevoked(key_data['key_id'])
+                        raise SigningKeyHasBeenRevoked(key.key_id)
                     key_revoked = True
 
     return sig_expired, key_expired, key_revoked
 
 
-def get_hashed_subpacket_data(data):
+def get_hashed_subpacket_data(signature):
     """Get the hashed subpacket data from a signature packet's data."""
 
-    sig_version = data[0]
-    offset = 1
+    sig_version = signature.version
     if sig_version in (2, 3):
         return bytearray()
     elif sig_version >= 4:
-        offset += 1
-        offset += 1
-        offset += 1
-        length = utils.short_to_int(data, offset)
-        offset += 2
-        return data[offset:offset + length]
+        return b''.join(map(bytes, signature.hashed_subpackets))
 
 
-def key_verify(algorithm_type, expected_hash, signature_data, key_data):
+def key_verify(algorithm_type, expected_hash, signature, key):
     """Verify that the signature data matches the calculated digest of
     the data being signed using the key that made the signature.
     """
 
     key_constructor = utils.get_public_key_constructor(algorithm_type)
-    signature_values = utils.get_signature_values(signature_data['_data'])
+    signature_values = signature.signature_values
 
     if algorithm_type == 17:
-        key_obj = key_constructor((long(key_data['prime']),
-                                   long(key_data['group_order']),
-                                   long(key_data['group_gen']),
-                                   long(key_data['key_value'])
+        key_obj = key_constructor((long(key.prime_p),
+                                   long(key.group_order_q),
+                                   long(key.group_generator_g),
+                                   long(key.key_value_y)
                                    ))
     elif algorithm_type == 20:
-        key_obj = key_constructor((long(key_data['prime']),
-                                   long(key_data['group_gen']),
-                                   long(key_data['key_value'])
+        key_obj = key_constructor((long(key.prime_p),
+                                   long(key.group_generator_g),
+                                   long(key.key_value_y)
                                    ))
     elif algorithm_type in (1, 3):
-        key_obj = key_constructor((long(key_data['modulus']),
-                                   long(key_data['exponent'])
+        key_obj = key_constructor((long(key.modulus_n),
+                                   long(key.exponent_e)
                                    ))
     else:
         raise UnsupportedPublicKeyAlgorithm(algorithm_type)
@@ -231,51 +222,53 @@ def key_verify(algorithm_type, expected_hash, signature_data, key_data):
         raise SignatureVerificationFailed()
 
 
-def check_signature(key_data, signature_data, hash_, strict=False):
+def check_signature(key, signature, hash_, strict=False):
     """Validate the signature created by this key matches the digest of
     the data it claims to sign.
     """
 
     sig_expired, key_expired, key_revoked = \
-            check_signature_values(key_data, signature_data, strict)
+            check_signature_values(key, signature, strict)
 
     # Perform the quick check first before busting out the public key
     # algorithms
     digest = hash_.digest()
-    if bytearray(digest[:2]) != signature_data['_sig_hash2']:
+    if bytearray(digest[:2]) != signature.hash2:
+        import pdb; pdb.set_trace()
         raise SignatureDigestMismatch()
 
-    key_verify(key_data['pub_algorithm_type'], hash_, signature_data,
-               key_data)
+    key_verify(key.public_key_algorithm, hash_, signature,
+               key)
 
     return sig_expired, key_expired, key_revoked
 
 
-def validate_key_signature(signature_data, hash_, key_data, strict=False):
+def validate_key_signature(signature, hash_, key, strict=False):
     """Validates whether the signature of a key is valid."""
 
     sig_expired, key_expired, key_revoked = \
-            check_signature(key_data, signature_data, hash_, strict)
-    if key_data.get('parent'):
-        check_back_signatures(key_data, signature_data)
+            check_signature(key, signature, hash_, strict)
+    parent = key.public_key_parent
+    if parent:
+        check_back_signatures(key, signature)
 
     return sig_expired, key_expired, key_revoked
 
 
-def check_revocation_keys(key_data, signature_data, hash_, signing_key,
+def check_revocation_keys(key, signature, hash_, signing_key,
                           strict=False):
     """Validates a revocation signature on a public key, where the key
     being revoked has been signed by another key.
     """
 
-    for rk in get_revocation_keys(key_data):
-        if rk[-len(key_data['key_id']):] == key_data['key_id']:
-            return validate_key_signature(signature_data, hash_, signing_key,
+    for rk in get_revocation_keys(key):
+        if rk[-len(key.key_id):] == key.key_id:
+            return validate_key_signature(signature, hash_, signing_key,
                                           strict)
 
 
-def validate_signature(public_key_data, target_type, target_packet,
-                       signature_data, signing_key_data, strict=False):
+def validate_signature(public_key, target, signature, signing_key,
+                       strict=False):
     """Returns a tuple of three booleans, the first indicates whether
     the signature has expired, the second indicates if the signing key
     has expired, the third indicates if the signing key has been
@@ -286,49 +279,51 @@ def validate_signature(public_key_data, target_type, target_packet,
     """
 
     hashed_subpacket_data = get_hashed_subpacket_data(
-                                signature_data['_data']
+                                signature
                                 )
     hash_ = utils.hash_packet_for_signature(
-                public_key_data['_data'],
-                target_type,
-                target_packet['_data'],
-                signature_data['sig_type'],
-                signature_data['sig_version'],
-                signature_data['hash_algorithm_type'],
-                signature_data['creation_time'],
-                signature_data['pub_algorithm_type'],
+                public_key.to_packet(),
+                target.to_packet(),
+                signature.signature_type,
+                signature.version,
+                signature.hash_algorithm,
+                signature.creation_time,
+                signature.public_key_algorithm,
                 hashed_subpacket_data
                 )
-    sig_type = signature_data['sig_type']
+    sig_type = signature.signature_type
     result = False, False
-    if sig_type == 0x20:
+    if sig_type == constants.KEY_REVOCATION_SIGNATURE:
         # public key revocation
-        if public_key_data['key_id'] != signature_data['key_id']:
-            result = check_revocation_keys(public_key_data, signature_data,
-                                           hash_, signing_key_data, strict)
+        if public_key.key_id not in signature.issuer_key_ids:
+            result = check_revocation_keys(public_key, signature,
+                                           hash_, signing_key, strict)
         else:
-            result = check_signature(public_key_data, signature_data, hash_,
+            result = check_signature(public_key, signature, hash_,
                                      strict)
-    elif sig_type == 0x28:
+    elif sig_type == constants.SUBKEY_REVOCATION_SIGNATURE:
         # subkey revocation
-        result = check_signature(public_key_data, signature_data, hash_,
+        result = check_signature(public_key, signature, hash_,
                                  strict)
-    elif sig_type == 0x18:
+    elif sig_type == constants.SUBKEY_BINDING_SIGNATURE:
         # key binding
-        if public_key_data['key_id'] != signature_data['key_id']:
+        if public_key.key_id not in signature.issuer_key_ids:
             raise InvalidSubkeyBindingSignature()
-        result = check_signature(public_key_data, signature_data, hash_,
+        result = check_signature(public_key, signature, hash_,
                                  strict)
-    elif sig_type == 0x1f:
+    elif sig_type == constants.SIGNATURE_DIRECTLY_ON_A_KEY:
         # direct key signature
-        result = check_signature(public_key_data, signature_data, hash_,
+        result = check_signature(public_key, signature, hash_,
                                  strict)
-    elif sig_type in (0x10, 0x11, 0x12, 0x13):
-        result = check_signature(signing_key_data, signature_data, hash_,
+    elif sig_type in (constants.GENERIC_CERTIFICATION,
+                      constants.CASUAL_CERTIFICATION,
+                      constants.POSITIVE_CERTIFICATION,
+                      constants.PERSONA_CERTIFICATION):
+        result = check_signature(signing_key, signature, hash_,
                                  strict)
-    elif sig_type == 0x19:
+    elif sig_type == constants.PRIMARY_KEY_BINDING_SIGNATURE:
         # Backsignature, we shouldn't have this here
-        raise UnexpectedSignatureType(0x19)
+        raise UnexpectedSignatureType(constants.PRIMARY_KEY_BINDING_SIGNATURE)
     else:
         # 0x00, 0x01, 0x02, 0x30, 0x40 & 0x50 do not apply to public keys
         raise UnexpectedSignatureType(sig_type)
@@ -336,40 +331,38 @@ def validate_signature(public_key_data, target_type, target_packet,
     return result
 
 
-def validate_signatures(target_data, db, target_type=6, pk_data=None,
-                        strict=False):
-    if pk_data is None:
-        pk_data = target_data
+def get_target_type(item):
+    return item.to_packet().type
 
-    for sig in target_data.get('signatures', []):
-        if sig['validated']:
+
+def validate_signatures(target, db, strict=False):
+    pk = target.primary_public_key
+    if pk is None:
+        pk = target
+
+    for sig in target.signatures:
+        if sig.validated:
             continue
-        signing_key_data = None
-        i = 0
-        while len(i < sig['key_ids']) and not signing_key_data:
-            signing_key_data = db.get_key_by_key_id(
-                                        sig['key_ids'][i]['key_id']
-                                    )
-        if not signing_key_data:
-            continue
-        try:
-            validate_signature(pk_data, target_type, target_data,
-                               sig, signing_key_data, strict)
-        except InvalidSignature:
-            sig['validated'] = False
-        except CannotValidateSignature:
-            sig['validated'] = None
-        else:
-            sig['validated'] = True
+        for signing_key_id in sig.issuer_key_ids:
+            signing_keys = db.search(key_id=signing_key_id)
+            if signing_keys:
+                signing_key = signing_keys[0]
+                try:
+                    validate_signature(pk, target,
+                                       sig, signing_key, strict)
+                except InvalidSignature as e:
+                    sig.validated = False
+                except CannotValidateSignature:
+                    sig.validated = None
+                else:
+                    sig.validated = True
 
-    for uid in target_data.get('user_ids', []):
-        validate_signatures(uid, db, target_type=13, pk_data=pk_data,
-                            strict=strict)
+    if isinstance(target, (TransferablePublicKey, TransferableSecretKey)):
+        for uid in target.user_ids:
+            validate_signatures(uid, db, strict=strict)
 
-    for uattr in target_data.get('user_attributes', []):
-        validate_signatures(uattr, db, target_type=17, pk_data=pk_data,
-                            strict=strict)
+        for uattr in target.user_attributes:
+            validate_signatures(uattr, db, strict=strict)
 
-    for subkey in target_data.get('subkeys', []):
-        validate_signatures(subkey, db, target_type=14, pk_data=pk_data,
-                            strict=strict)
+        for subkey in target.subkeys:
+            validate_signatures(subkey, db, strict=strict)
