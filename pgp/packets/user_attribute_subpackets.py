@@ -40,7 +40,8 @@ class UserAttributeSubpacket(object):
     def __bytes__(self):
         data = self.content
         result = bytearray()
-        result.extend(utils.new_packet_length_to_bytes(len(data), False)[0])
+        # +1 for sub type
+        result.extend(utils.new_packet_length_to_bytes(len(data) + 1, False)[0])
         result.append(self.sub_type)
         result.extend(data)
         return bytes(result)
@@ -67,7 +68,7 @@ class ImageAttributeSubpacket(UserAttributeSubpacket):
             if any(sub_data[4:16]):
                 # Incorrect
                 raise ValueError
-            content_data = sub_data[16:]
+            content_data = sub_data[header_length:]
         elif parse_unknown:
             # If we want to parse unknown, non-image data
             content_data = sub_data[header_length:]
@@ -103,9 +104,9 @@ class ImageAttributeSubpacket(UserAttributeSubpacket):
                 ])
         if self.image_format is not None:
             result.append(self.image_format)
-            result.extend([0] * (self.header_length - 1))
+            result.extend([0] * (self.header_length - 4))
         else:
-            result.extend([0] * self.header_length)
+            result.extend([0] * (self.header_length - 3))
         result.extend(self.data)
         return result
 
