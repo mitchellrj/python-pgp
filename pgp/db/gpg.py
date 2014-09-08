@@ -18,8 +18,13 @@ import atexit
 from collections import OrderedDict
 try:
     from dbm import gnu as gdbm
+    HAVE_GDBM = True
 except ImportError:
-    import gdbm
+    try:
+        import gdbm
+        HAVE_GDBM = True
+    except (ImportError, OSError):
+        HAVE_GDBM = False
 import os
 import platform
 import signal
@@ -484,7 +489,10 @@ def get_resource(filename, force=False, secret=False, read_only=False,
     elif type_ == ResourceTypes.KEYRING:
         return Keyring(filename, force, secret, read_only, default)
     elif type_ == ResourceTypes.GDBM:
-        return GDBM(filename, force, secret, read_only, default)
+        if HAVE_GDBM:
+            return GDBM(filename, force, secret, read_only, default)
+        else:
+            raise RuntimeError()
     else:
         raise ValueError('Unknown resource type')
 

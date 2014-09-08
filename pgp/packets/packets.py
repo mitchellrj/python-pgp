@@ -761,18 +761,16 @@ class SecretKeyPacket(PublicKeyPacket):
             iv = data[offset:offset + block_length]
             offset += block_length
 
+        encrypted_portion = data[offset:]
         if s2k_usage in (0, 255):
-            encrypted_portion = data[offset:-2]
-            checksum = (data[-2] << 8) + data[-1]
-            hash_ = None
+            checksum = True
+            hash_ = False
         elif s2k_usage == 254:
-            encrypted_portion = data[offset:-20]
-            hash_ = data[-20:]
-            checksum = None
+            hash_ = True
+            checksum = False
         else:
-            encrypted_portion = data[offset:]
-            checksum = None
-            hash_ = None
+            checksum = False
+            hash_ = False
 
         values += (s2k_specification, symmetric_algorithm, iv,
                    encrypted_portion, checksum, hash_)
@@ -847,7 +845,7 @@ class SecretKeyPacket(PublicKeyPacket):
 
     @classmethod
     def encrypt_key_values(cls, version, values, key, symmetric_algorithm,
-                           iv):
+                           iv, checksum=False, hash_=False):
 
         cipher = utils.get_symmetric_cipher(
                     symmetric_algorithm, key, utils.OPENPGP, iv,
@@ -873,24 +871,32 @@ class SecretKeyPacket(PublicKeyPacket):
                         ) + mpi_value_bytes
                 encrypted_data.extend(cipher.encrypt(mpi_value_bytes))
 
-        checksum = sum(unencrypted_data) & 0xffff
-        if version >= 4:
-            checksum = utils.short_to_int(cipher.encrypt(
-                            utils.int_to_2byte(checksum)), 0)
+        if checksum:
+            checksum = utils.int_to_2byte(sum(unencrypted_data) & 0xffff)
+            if version >= 4:
+                encrypted_data.extend(cipher.encrypt(checksum))
+            else:
+                encrypted_data.extend(checksum)
 
-        hash_ = SHA.new(unencrypted_data).digest()
-        return encrypted_data, checksum, hash_
+        if hash_:
+            hash_ = SHA.new(unencrypted_data).digest()
+            encrypted_data.extend(cipher.encrypt(hash_))
+        return encrypted_data
 
     @classmethod
     def decrypt_encrypted_key_portion(cls, version, key, symmetric_algorithm,
-                                      iv, encrypted_data,
-                                      expected_checksum=None,
-                                      expected_hash=None):
+                                      iv, encrypted_data, checksum=False,
+                                      hash_=False):
 
+        sym_block_size = utils.symmetric_cipher_block_lengths.get(
+            symmetric_algorithm, 8)
         if version >= 4:
             cipher = utils.get_symmetric_cipher(
-                        symmetric_algorithm, key, utils.OPENPGP, iv)
-            decrypted_data = cipher.decrypt(encrypted_data)
+                        symmetric_algorithm, key, utils.CFB, iv)
+            padding = bytearray([0x00] * (len(encrypted_data) % sym_block_size))
+            decrypted_data = cipher.decrypt(
+                bytes(encrypted_data + padding)
+                )[:-len(padding)]
         elif version in (2, 3):
             # "With V3 keys, the MPI bit count prefix (i.e., the first two
             #  octets) is not encrypted.  Only the MPI non-prefix data is
@@ -899,7 +905,7 @@ class SecretKeyPacket(PublicKeyPacket):
             #  is aligned with the start of the MPI data."
 
             cipher = utils.get_symmetric_cipher(
-                        symmetric_algorithm, key, utils.OPENPGP, iv,
+                        symmetric_algorithm, key, utils.CFB, iv,
                         syncable=True)
             offset = 0
             decrypted_data = bytearray()
@@ -917,25 +923,29 @@ class SecretKeyPacket(PublicKeyPacket):
         else:
             raise ValueError
 
-        if expected_checksum is not None:
+        data_length = len(decrypted_data)
+        if checksum:
+            data_length -= 2
             if version >= 4:
                 # With V4 keys, the checksum is encrypted like the
                 # algorithm-specific data.
                 expected_checksum = utils.short_to_int(
-                        cipher.decrypt(utils.int_to_2byte(expected_checksum))
+                        cipher.decrypt(utils.int_to_2byte(decrypted_data[-2:]))
                     )
-            actual_checksum = sum(decrypted_data) & 0xffff
+            actual_checksum = sum(decrypted_data[:-2]) & 0xffff
             if actual_checksum != expected_checksum:
                 raise ValueError
 
-        if expected_hash is not None:
-            actual_hash = SHA.new(decrypted_data).digest()
-            if expected_hash != actual_hash:
+        if hash_:
+            data_length -= 20
+            expected_hash = decrypted_data[-20:]
+            actual_hash = SHA.new(decrypted_data[:-20]).digest()
+            if bytes(expected_hash) != actual_hash:
                 raise ValueError
 
         values = []
         offset = 0
-        while offset < len(decrypted_data):
+        while offset < data_length:
             mpi, offset = utils.mpi_to_int(decrypted_data, offset)
             values.append(mpi)
 
@@ -945,7 +955,7 @@ class SecretKeyPacket(PublicKeyPacket):
     def content(self):
         data = PublicKeyPacket.content.__get__(self)
         if self.s2k_specification is not None:
-            if self.checksum is not None:
+            if self.checksum:
                 s2k_usage = 255
             else:
                 s2k_usage = 254
@@ -957,13 +967,6 @@ class SecretKeyPacket(PublicKeyPacket):
             data.extend(self.iv)
         if self.encrypted_portion:
             data.extend(self.encrypted_portion)
-            if self.checksum is not None:
-                data.extend([
-                    self.checksum >> 8,
-                    self.checksum & 0xff
-                    ])
-            elif self.hash is not None:
-                data.extend(self.hash)
         else:
             if self.public_key_algorithm in (1, 2, 3):
                 values = [
@@ -981,14 +984,10 @@ class SecretKeyPacket(PublicKeyPacket):
                 key = self.s2k_specification.to_key(self.passphrase)
             else:
                 key = self.passphrase
-            encrypted_data, checksum, hash_ = self.encrypt_key_values(
+            encrypted_data = self.encrypt_key_values(
                         self.version, values, key, self.symmetric_algorithm,
-                        self.iv)
+                        self.iv, s2k_usage in (0, 255), s2k_usage == 254)
             data.extend(encrypted_data)
-            if s2k_usage in (0, 255):
-                data.extend(utils.int_to_2byte(checksum))
-            if s2k_usage == 254:
-                data.extend(hash_)
 
         return data
 
@@ -1000,7 +999,7 @@ class SecretSubkeyPacket(SecretKeyPacket):
                  exponent=None, prime=None, group_order=None,
                  group_generator=None, key_value=None, s2k_specification=None,
                  symmetric_algorithm=None, iv=None, encrypted_portion=None,
-                 checksum=None, hash_=None, passphrase=None, exponent_d=None,
+                 checksum=False, hash_=False, passphrase=None, exponent_d=None,
                  prime_p=None, prime_q=None, multiplicative_inverse_u=None,
                  exponent_x=None):
 

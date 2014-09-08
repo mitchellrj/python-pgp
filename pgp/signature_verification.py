@@ -172,35 +172,12 @@ def get_hashed_subpacket_data(signature):
         return b''.join(map(bytes, signature.hashed_subpackets))
 
 
-def key_verify(algorithm_type, expected_hash, signature, key):
+def key_verify(expected_hash, signature, key):
     """Verify that the signature data matches the calculated digest of
     the data being signed using the key that made the signature.
     """
 
-    key_constructor = utils.get_public_key_constructor(algorithm_type)
-    signature_values = signature.signature_values
-
-    if algorithm_type == 17:
-        key_obj = key_constructor((long(key.key_value_y),
-                                   long(key.group_generator_g),
-                                   long(key.prime_p),
-                                   long(key.group_order_q)
-                                   ))
-    elif algorithm_type == 20:
-        key_obj = key_constructor((long(key.prime_p),
-                                   long(key.group_generator_g),
-                                   long(key.key_value_y)
-                                   ))
-    elif algorithm_type in (1, 3):
-        key_obj = key_constructor((long(key.modulus_n),
-                                   long(key.exponent_e)
-                                   ))
-    else:
-        raise UnsupportedPublicKeyAlgorithm(algorithm_type)
-
-    if not utils.verify_hash(algorithm_type, key_obj, expected_hash,
-                             signature_values):
-        raise SignatureVerificationFailed()
+    return key.verify(signature, expected_hash)
 
 
 def check_signature(key, signature, hash_, strict=False):
@@ -217,8 +194,7 @@ def check_signature(key, signature, hash_, strict=False):
     if bytearray(digest[:2]) != signature.hash2:
         raise SignatureDigestMismatch()
 
-    key_verify(key.public_key_algorithm, hash_, signature,
-               key)
+    key_verify(key, hash_, signature)
 
     return key_expired, key_revoked
 

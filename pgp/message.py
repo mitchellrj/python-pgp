@@ -236,7 +236,7 @@ class SignedMessageWrapper(object):
         if packet.type == C.ONE_PASS_SIGNATURE_PACKET_TYPE:
             one_pass = True
         elif packet.type != C.SIGNATURE_PACKET_TYPE:
-            signature =
+            signature = None
 
     def __init__(self, message):
         self.message = message

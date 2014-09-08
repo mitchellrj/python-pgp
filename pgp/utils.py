@@ -76,10 +76,26 @@ symmetric_cipher_block_lengths = {
     }
 
 
-def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
+symmetric_cipher_key_lengths = {
+    0: 0,  # Plaintext
+    1: 16,  # IDEA
+    2: 24,  # Triple-DES
+    3: 16,  # CAST5
+    4: 16,  # Blowfish
+    7: 16,  # AES-128
+    8: 24,  # AES-192
+    9: 32,  # AES-256
+    10: 16,  # Twofish-256
+    11: 16,  # Camellia-128
+    12: 24,  # Camellia-192
+    13: 32,  # Camellia-256
+    }
+
+
+def sign_hash(pub_algorithm_type, secret_key, data, k=None):
     if pub_algorithm_type in (1, 3):
         # RSA
-        sig_string = PKCS1_v1_5.new(secret_key).sign(hash_)
+        sig_string = PKCS1_v1_5.new(secret_key).sign(data)
         return (bytes_to_long(sig_string),)
     elif pub_algorithm_type == 20:
         # ELG
@@ -93,7 +109,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
             print(k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
-                            hash_, secret_key.size())
+                            data, secret_key.size())
         return secret_key.sign(sig_string, k)
     elif pub_algorithm_type == 17:
         q = secret_key.q
@@ -102,7 +118,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
         if k is None:
             k = random.StrongRandom().randint(1, q - 1)
 
-        digest = hash_.digest()[:qbytes]
+        digest = data[:qbytes]
         return secret_key.sign(bytes_to_long(digest), k)
     else:
         # TODO: complete
@@ -258,13 +274,17 @@ def get_symmetric_cipher(type_, key, mode, iv=None, segment_size=None,
         13: camellia,
         }.get(type_, None)
 
+    if segment_size is None and mode == blockalgo.MODE_CFB:
+        segment_size = cipher.block_size * 8
+
     if syncable and cipher not in (aidea, twofish, camellia):
         # We need to wrap the PyCrypto implementation so we can re-sync
         # for OpenPGP's weird CFB mode.
-        return syncable_cipher_wrapper.new(cipher, key, mode, IV=iv,
+        return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
+                                           IV=bytes(iv),
                                            segment_size=segment_size)
 
-    return cipher.new(key, mode, IV=iv, segment_size=segment_size)
+    return cipher.new(bytes(key), mode, IV=bytes(iv), segment_size=segment_size)
 
 
 class NoopCompression(object):
