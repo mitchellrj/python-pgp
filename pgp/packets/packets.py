@@ -889,8 +889,8 @@ class SecretKeyPacket(PublicKeyPacket):
 
         if version >= 4:
             cipher = utils.get_symmetric_cipher(
-                        symmetric_algorithm, key, utils.OPENPGP, iv)
-            decrypted_data = cipher.decrypt(encrypted_data)
+                        symmetric_algorithm, key, utils.CFB, iv)
+            decrypted_data = cipher.decrypt(bytes(encrypted_data))
         elif version in (2, 3):
             # "With V3 keys, the MPI bit count prefix (i.e., the first two
             #  octets) is not encrypted.  Only the MPI non-prefix data is
@@ -899,7 +899,7 @@ class SecretKeyPacket(PublicKeyPacket):
             #  is aligned with the start of the MPI data."
 
             cipher = utils.get_symmetric_cipher(
-                        symmetric_algorithm, key, utils.OPENPGP, iv,
+                        symmetric_algorithm, key, utils.CFB, iv,
                         syncable=True)
             offset = 0
             decrypted_data = bytearray()
@@ -930,7 +930,7 @@ class SecretKeyPacket(PublicKeyPacket):
 
         if expected_hash is not None:
             actual_hash = SHA.new(decrypted_data).digest()
-            if expected_hash != actual_hash:
+           if bytes(expected_hash) != actual_hash:
                 raise ValueError
 
         values = []

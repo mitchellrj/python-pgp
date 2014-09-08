@@ -1,3 +1,5 @@
+import math
+
 from pgp import utils
 
 
@@ -20,7 +22,7 @@ class SimpleS2K(object):
         self.hash_algorithm = hash_algorithm
         self.symmetric_algorithm = symmetric_algorithm
         self.salt = bytearray()
-        self.count = 1
+        self.count = None
 
     def __eq__(self, other):
         return (
@@ -35,34 +37,41 @@ class SimpleS2K(object):
         return bytes(bytearray([self.hash_algorithm]) + bytearray(self.salt))
 
     def to_key(self, passphrase):
-        required_length = utils.symmetric_cipher_block_lengths.get(
+        required_length = utils.symmetric_cipher_key_lengths.get(
                             self.symmetric_algorithm
                         )
         hash_length = utils.hash_lengths.get(self.hash_algorithm)
-        i = 0
+        pass_ = 0
         result = bytearray()
+        # Length of content hashed on each iteration
+        len2 = len(passphrase) + 8
+        count = self.count
+        if count is None:
+            count = len2
 
-        while (i * hash_length) < required_length:
+        while (pass_ * hash_length) < required_length:
             # "If the hash size is less than the key size, multiple instances
             #  of the hash context are created -- enough to produce the
-            #  required key data.
+            #  required key data."
             hash_ = utils.get_hash_instance(self.hash_algorithm)
 
             # "These instances are preloaded with 0, 1, 2, ... octets of zeros
             #  (that is to say, the first instance has no preloading, the
             #  second gets preloaded with 1 octet of zero, the third is
             #  preloaded with two octets of zeros, and so forth)."
-            hash_.update(bytearray([0x00] * i))
+            hash_.update(bytearray([0x00] * pass_))
+
             # Spec is actually pretty vague here - had to determine when the
-            # salt really should be hashed from gcrypt source.
-            for i in range(self.count):
-                hash_.update(self.salt)
-                hash_.update(passphrase)
+            # salt really should be hashed from gcrypt/gnupg source.
+            for i in range(math.ceil(count / float(len2))):
+                to_write = min(len2, count - (len2 * i))
+                hash_.update((bytes(self.salt) + bytes(passphrase))[:to_write])
+
             # "Once the passphrase is hashed, the output data from the
             #  multiple hashes is concatenated, first hash leftmost, to
             #  produce the key data"
             result.extend(bytearray(hash_.digest()))
-            i += 1
+            pass_ += 1
 
         # "any excess octets on the right [are] discarded."
         return result[:required_length]
