@@ -35,6 +35,12 @@ from pgp.user_id import parse_user_id
 from pgp import utils
 
 
+try:
+    long
+except NameError:
+    long = int
+
+
 class KeySignature(BaseSignature):
 
     def is_self_signature(self):
@@ -264,7 +270,40 @@ class BasePublicKey(object):
         else:
             raise ValueError
 
-        return SHA.new(sexp).hexdigest().upper()
+        return SHA.new(sexp.encode('us-ascii')).hexdigest().upper()
+
+    def _get_key_obj(self):
+        key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+        if self.public_key_algorithm == 17:
+            key_obj = key_constructor((long(self.key_value_y),
+                                       long(self.group_generator_g),
+                                       long(self.prime_p),
+                                       long(self.group_order_q)
+                                       ))
+        elif self.public_key_algorithm == 20:
+            key_obj = key_constructor((long(self.prime_p),
+                                       long(self.group_generator_g),
+                                       long(self.key_value_y)
+                                       ))
+        elif algorithm_type in (1, 3):
+            key_obj = key_constructor((long(self.modulus_n),
+                                       long(self.exponent_e)
+                                       ))
+        else:
+            raise UnsupportedPublicKeyAlgorithm(algorithm_type)
+
+        return key_obj
+
+    def verify(self, signature, expected_hash):
+        signature_values = signature.signature_values
+
+        key_obj = self._get_key_obj()
+
+        if not utils.verify_hash(algorithm_type, key_obj, expected_hash,
+                                 signature_values):
+            raise SignatureVerificationFailed()
+
+        return True
 
     @staticmethod
     def __selfsig_attribute(name, default=None):
@@ -377,9 +416,50 @@ class BaseSecretKey(BasePublicKey):
                  self.encrypted_portion, self.checksum, self.hash)
         return args
 
+    def _get_key_obj(self):
+        key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+        if self.public_key_algorithm == 17:
+            key_obj = key_constructor((long(self.key_value_y),
+                                       long(self.group_generator_g),
+                                       long(self.prime_p),
+                                       long(self.group_order_q),
+                                       long(self.exponent_x)
+                                       ))
+        elif self.public_key_algorithm == 20:
+            key_obj = key_constructor((long(self.prime_p),
+                                       long(self.group_generator_g),
+                                       long(self.key_value_y),
+                                       long(self.exponent_x)
+                                       ))
+        elif self.public_key_algorithm in (1, 3):
+            key_obj = key_constructor((long(self.modulus_n),
+                                       long(self.exponent_e),
+                                       long(self.exponent_d),
+                                       long(self.prime_p),
+                                       long(self.prime_q),
+                                       long(self.multiplicative_inverse_u)
+                                       ))
+        else:
+            raise UnsupportedPublicKeyAlgorithm(algorithm_type)
+
+        return key_obj
+
+    def sign(self, data):
+        if self.is_locked():
+            raise RuntimeError('Secret key must be unlocked before signing.')
+        signature_values = signature.signature_values
+
+        key_obj = self._get_key_obj()
+
+        if not utils.sign_hash(self.public_key_algorithm, key_obj, data):
+            raise SignatureVerificationFailed()
+
+        return signature_values
+
     def unlock(self, passphrase):
         if self.s2k_specification is not None:
-            key = self.s2k_specification.to_key(passphrase)
+            # TODO: Check encoding
+            key = self.s2k_specification.to_key(passphrase.encode('utf8'))
         else:
             key = passphrase
 

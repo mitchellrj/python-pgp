@@ -91,10 +91,10 @@ symmetric_cipher_key_lengths = {
     }
 
 
-def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
+def sign_hash(pub_algorithm_type, secret_key, data, k=None):
     if pub_algorithm_type in (1, 3):
         # RSA
-        sig_string = PKCS1_v1_5.new(secret_key).sign(hash_)
+        sig_string = PKCS1_v1_5.new(secret_key).sign(data)
         return (bytes_to_long(sig_string),)
     elif pub_algorithm_type == 20:
         # ELG
@@ -108,7 +108,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
             print(k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
-                            hash_, secret_key.size())
+                            data, secret_key.size())
         return secret_key.sign(sig_string, k)
     elif pub_algorithm_type == 17:
         q = secret_key.q
@@ -117,7 +117,7 @@ def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
         if k is None:
             k = random.StrongRandom().randint(1, q - 1)
 
-        digest = hash_.digest()[:qbytes]
+        digest = data[:qbytes]
         return secret_key.sign(bytes_to_long(digest), k)
     else:
         # TODO: complete
