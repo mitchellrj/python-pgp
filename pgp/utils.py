@@ -91,10 +91,10 @@ symmetric_cipher_key_lengths = {
     }
 
 
-def sign_hash(pub_algorithm_type, secret_key, data, k=None):
+def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
     if pub_algorithm_type in (1, 3):
         # RSA
-        sig_string = PKCS1_v1_5.new(secret_key).sign(data)
+        sig_string = PKCS1_v1_5.new(secret_key).sign(hash_)
         return (bytes_to_long(sig_string),)
     elif pub_algorithm_type == 20:
         # ELG
@@ -108,7 +108,7 @@ def sign_hash(pub_algorithm_type, secret_key, data, k=None):
             print(k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
-                            data, secret_key.size())
+                            hash_, secret_key.size())
         return secret_key.sign(sig_string, k)
     elif pub_algorithm_type == 17:
         q = secret_key.q
@@ -117,7 +117,7 @@ def sign_hash(pub_algorithm_type, secret_key, data, k=None):
         if k is None:
             k = random.StrongRandom().randint(1, q - 1)
 
-        digest = data[:qbytes]
+        digest = hash_.digest()[:qbytes]
         return secret_key.sign(bytes_to_long(digest), k)
     else:
         # TODO: complete
@@ -406,13 +406,13 @@ def get_compression_instance(type_):
     return instance
 
 
-def hash_key(hash_, key_packet_data):
+def hash_key(data_to_hash, key_packet_data):
     """Adds key data to a hash for signature comparison."""
 
     key_length = len(key_packet_data)
-    hash_.update(b'\x99')
-    hash_.update(int_to_2byte(key_length))
-    hash_.update(key_packet_data)
+    data_to_hash.append(0x99)
+    data_to_hash.extend(int_to_2byte(key_length))
+    data_to_hash.extend(key_packet_data)
 
 
 def packet_type_from_first_byte(byte_):
@@ -421,21 +421,21 @@ def packet_type_from_first_byte(byte_):
     return (byte_ & 0x3f) >> 2
 
 
-def hash_user_data(hash_, target_type, target_packet_data, signature_version):
+def hash_user_data(data_to_hash, target_type, target_packet_data, signature_version):
     """Adds user attribute & user id packets to a hash for signature
     comparison.
     """
 
     if target_type == 13:
         if signature_version >= 4:
-            hash_.update(bytearray([0xb4]))
-            hash_.update(int_to_4byte(len(target_packet_data)))
-        hash_.update(target_packet_data)
+            data_to_hash.append(0xb4)
+            data_to_hash.extend(int_to_4byte(len(target_packet_data)))
+        data_to_hash.extend(target_packet_data)
     elif target_type == 17:
         if signature_version >= 4:
-            hash_.update(bytearray([0xd1]))
-            hash_.update(int_to_4byte(len(target_packet_data)))
-        hash_.update(target_packet_data)
+            data_to_hash.extend(bytearray([0xd1]))
+            data_to_hash.extend(int_to_4byte(len(target_packet_data)))
+        data_to_hash.extend(target_packet_data)
 
 
 def hash_packet_for_signature(packet_for_hash,
@@ -443,31 +443,31 @@ def hash_packet_for_signature(packet_for_hash,
                               hash_algorithm_type, signature_creation_time,
                               pub_algorithm_type, public_key_packet=None,
                               hashed_subpacket_data=None):
-    hash_ = get_hash_instance(hash_algorithm_type)
 
+    data_to_hash = bytearray()
     public_key_packet_data = None
     if public_key_packet is not None:
         public_key_packet_data = public_key_packet.content
     packet_data_for_hash = packet_for_hash.content
     if signature_type in (0x1f, 0x20):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
+        hash_key(data_to_hash, public_key_packet_data)
     elif signature_type in (0x18, 0x19, 0x28):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
-        hash_key(hash_, packet_data_for_hash)
+        hash_key(data_to_hash, public_key_packet_data)
+        hash_key(data_to_hash, packet_data_for_hash)
     elif signature_type == 0x50:
-        hash_.update(b'\x88')
-        hash_.update(len(packet_data_for_hash))
-        hash_.update(packet_data_for_hash)
+        data_to_hash.append(0x88)
+        data_to_hash.append(len(packet_data_for_hash))
+        data_to_hash.extend(packet_data_for_hash)
     elif signature_type in (0x00, 0x01):
-        hash_.update(packet_data_for_hash)
+        data_to_hash.extend(packet_data_for_hash)
     elif signature_type == 0x02:
         pass
     elif signature_type in (0x10, 0x11, 0x12, 0x13, 0x30):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
-        hash_user_data(hash_, packet_for_hash.type, packet_data_for_hash,
+        hash_key(data_to_hash, public_key_packet_data)
+        hash_user_data(data_to_hash, packet_for_hash.type, packet_data_for_hash,
                        signature_version)
     elif signature_type == 0x40:
         # Timestamp signatures are poorly defined and semi-deprecated.
@@ -478,25 +478,27 @@ def hash_packet_for_signature(packet_for_hash,
         # https://tools.ietf.org/html/rfc1991
         # http://www.imc.org/ietf-openpgp/mail-archive/msg04966.html
         # http://www.imc.org/ietf-openpgp/mail-archive/msg04970.html
-        hash_.update(b'\x88')
-        hash_.update(len(packet_data_for_hash))
-        hash_.update(packet_data_for_hash)
+        data_to_hash.append(0x88)
+        data_to_hash.append(len(packet_data_for_hash))
+        data_to_hash.extend(packet_data_for_hash)
 
     if signature_version >= 4:
-        hash_.update(bytearray([signature_version]))
-    hash_.update(bytearray([signature_type]))
+        data_to_hash.append(signature_version)
+    data_to_hash.append(signature_type)
     if signature_version < 4:
-        hash_.update(int_to_4byte(signature_creation_time))
+        data_to_hash.extend(int_to_4byte(signature_creation_time))
     else:
-        hash_.update(bytearray([pub_algorithm_type]))
-        hash_.update(bytearray([hash_algorithm_type]))
+        data_to_hash.append(pub_algorithm_type)
+        data_to_hash.append(hash_algorithm_type)
         hashed_subpacket_length = len(hashed_subpacket_data)
-        hash_.update(int_to_2byte(hashed_subpacket_length))
-        hash_.update(hashed_subpacket_data)
-        hash_.update(bytearray([signature_version]))
-        hash_.update(bytearray([255]))
-        hash_.update(int_to_4byte(hashed_subpacket_length + 6))
+        data_to_hash.extend(int_to_2byte(hashed_subpacket_length))
+        data_to_hash.extend(hashed_subpacket_data)
+        data_to_hash.append(signature_version)
+        data_to_hash.append(255)
+        data_to_hash.extend(int_to_4byte(hashed_subpacket_length + 6))
 
+    hash_ = get_hash_instance(hash_algorithm_type)
+    hash_.update(data_to_hash)
     return hash_
 
 

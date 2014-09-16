@@ -24,6 +24,7 @@ from zope.interface import provider
 
 from pgp import interfaces
 from pgp import exceptions
+from pgp import utils
 from pgp.crc24 import crc24
 from pgp.packets import constants as C
 from pgp.packets import packets
@@ -176,6 +177,27 @@ class BaseSignature(object):
                         self.hash2, self.signature_values, creation_time,
                         self.issuer_key_ids[0])
         return packet
+
+    def to_signable_data(self, signature_version=3):
+        result = bytearray()
+        if self.version >= 4:
+            result.append(self.version)
+        result.append(self.signature_type)
+        if self.version < 4:
+            result.extend(utils.int_to_4byte(
+                time.mktime(self.creation_time.timetuple())
+            ))
+        else:
+            result.append(self.public_key_algorithm)
+            result.append(self.hash_algorithm)
+            hashed_subpacket_data = b''.join(map(bytes, self.hashed_subpackets))
+            hashed_subpacket_length = len(hashed_subpacket_data)
+            result.extend(utils.int_to_2byte(hashed_subpacket_length))
+            result.extend(hashed_subpacket_data)
+            result.append(self.version)
+            result.append(255)
+            result.extend(utils.int_to_4byte(hashed_subpacket_length + 6))
+        return result
 
     def __repr__(self):
         validation = ''
