@@ -18,6 +18,7 @@ import math
 import os
 import warnings
 
+from Crypto import Random
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.Hash import SHA
 
@@ -110,7 +111,7 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         offset = 0
         version = int(data[offset])
         offset += 1
-        key_id = utils.bytearray_to_hex(data, offset, 8)
+        key_id = utils.bytearray_to_hex(data, offset, 16)
         # "An implementation MAY accept or use a Key ID of zero as a "wild
         #  card" or "speculative" Key ID.  In this case, the receiving
         #  implementation would try all available private keys, checking for a
@@ -120,7 +121,6 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         offset += 8
         public_key_algorithm = int(data[offset])
         offset += 1
-        data_len = len(data)
         encrypted_session_key = data[offset:]
         result = cls(header_format, version, key_id, public_key_algorithm,
                      encrypted_session_key)
@@ -146,23 +146,39 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
             )
 
     @classmethod
-    def _get_key_and_cipher_algo(cls, secret_key_obj, encrypted_session_key):
+    def _get_key_and_cipher_algo(cls, public_key_algorithm, secret_key_obj,
+                                 encrypted_session_key):
         cipher = PKCS1_v1_5.new(secret_key_obj)
+        sentinel = Random.new().read((secret_key_obj.size() + 1) // 8)
         encrypted_session_key_length = len(encrypted_session_key)
         decrypted_values = []
-        offset = 1
+        offset = 0
         while offset < (encrypted_session_key_length - 2):
-            mpi, offset = utils.mpi_to_int(encrypted_session_key, offset)
-            decrypted_values.append(cipher.decrypt(mpi))
-        decrypted_data_length = len(decrypted_values)
-        symmetric_algorithm = int(decrypted_values[0])
+            mpilen = utils.mpi_length(encrypted_session_key, offset)
+            offset += 2
+            em = encrypted_session_key[offset:offset + mpilen]
+            offset += mpilen
+            em = b'\00' * (len(sentinel) - len(em)) + em
+            m = cipher.decrypt(em, sentinel)
+            if m == sentinel:
+                raise ValueError()
+            decrypted_values.append(m)
+        if public_key_algorithm in (1, 2, 3):
+            # RSA
+            m = decrypted_values[0]
+        elif public_key_algorithm in (17, 19):
+            m = decrypted_values[1]
+
+        symmetric_algorithm = int(m[0])
         expected_checksum = (
-                (decrypted_values[-2] << 8) +
-                decrypted_values[-1]
+                (m[-2] << 8) +
+                m[-1]
                 )
-        actual_checksum = sum(decrypted_values[1:-2]) & 0xffff
+        actual_checksum = sum(m[1:-2]) % 65536
         if expected_checksum != actual_checksum:
             raise ValueError
+
+        return symmetric_algorithm, m[1:-2]
 
 
     @classmethod
