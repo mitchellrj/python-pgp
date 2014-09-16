@@ -469,6 +469,10 @@ class BaseSecretKey(BasePublicKey):
 
         return key_obj
 
+    def decrypt(self, message):
+        if self.is_locked():
+            raise RuntimeError('Secret key must be unlocked before decrypting.')
+
     def sign(self, item, version, signature_type, hash_algorithm,
              hashed_subpackets=None):
         if self.is_locked():
