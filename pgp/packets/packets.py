@@ -835,7 +835,7 @@ class SecretKeyPacket(PublicKeyPacket):
             and self.iv == other.iv
             and self.encrypted_portion == other.encrypted_portion
             and self.checksum == other.checksum
-            and self.hash == other.hash_
+            and self.hash == other.hash
             )
 
     def decrypt(self, passphrase):
