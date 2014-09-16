@@ -939,7 +939,10 @@ class TransferablePublicKey(BasePublicKey):
         subkeys = primary_public_key.subkeys
         while (
             i < packet_count
-            and packets[i].type == C.PUBLIC_SUBKEY_PACKET_TYPE
+            and packets[i].type in (
+                C.PUBLIC_SUBKEY_PACKET_TYPE,
+                C.SECRET_SUBKEY_PACKET_TYPE
+                )
             ):
 
             subkey = cls._SubkeyClass.from_packet(primary_public_key,
