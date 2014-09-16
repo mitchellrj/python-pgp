@@ -70,10 +70,6 @@ def write_key_file(key, filename, armored=False):
         fh.write(data)
 
 
-def verify():
-    pass
-
-
 def generate(public_key_algorithm, bits, hash_algorithm, user_id, password):
     pass
 
