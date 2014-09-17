@@ -119,7 +119,7 @@ class BasePublicKey(object):
         args = self._to_packet_args(header_format)
         return self._PacketClass(*args)
 
-    def to_signable_data(self, signature_version=3):
+    def to_signable_data(self, signature_type, signature_version=3):
         key_packet_data = self.to_packet().content
         key_length = len(key_packet_data)
         result = bytearray([0x99])
@@ -168,7 +168,7 @@ class BasePublicKey(object):
         for signature in self.signatures:
             if not signature.is_self_signature():
                 continue
-            if signature.type != self._revocation_sig_type:
+            if signature.signature_type != self._revocation_sig_type:
                 continue
             return True
 
@@ -182,14 +182,18 @@ class BasePublicKey(object):
         if self.version < 4:
             expires = self._expiration_time
         else:
-            last_signature_created = 0
+            last_signature_created = None
             for signature in self.signatures:
                 if not signature.is_self_signature():
                     continue
-                if signature.type != self._self_sig_type:
+                if signature.signature_type != self._self_sig_type:
                     continue
                 if (signature.key_expiration_time is not None
-                    and last_signature_created < signature.creation_time):
+                    and (
+                        last_signature_created is None
+                        or last_signature_created < signature.creation_time
+                    )):
+
                     expires = signature.key_expiration_time
 
         return expires
@@ -198,14 +202,18 @@ class BasePublicKey(object):
         if self.version < 4:
             self._expiration_time = expiration_time
         else:
-            last_signature_created = 0
+            last_signature_created = None
             most_recent_selfsig = None
             for signature in self.signatures:
                 if not signature.is_self_signature():
                     continue
-                if signature.type != self._self_sig_type:
+                if signature.signature_type != self._self_sig_type:
                     continue
-                if last_signature_created < signature.creation_time:
+                if (signature.key_expiration_time is not None
+                    and (
+                        last_signature_created is None
+                        or last_signature_created < signature.creation_time
+                    )):
                     most_recent_selfsig = signature
 
             if most_recent_selfsig is not None:
@@ -312,8 +320,10 @@ class BasePublicKey(object):
 
         key_obj = self._get_key_obj()
         hash_ = utils.get_hash_instance(signature.hash_algorithm)
-        hash_.update(item.to_signable_data(signature.version))
-        hash_.update(signature.to_signable_data(signature.version))
+        hash_.update(item.to_signable_data(signature.signature_type,
+                                           signature.version))
+        hash_.update(signature.to_signable_data(signature.signature_type,
+                                                signature.version))
         if hash_.digest()[:2] != signature.hash2:
             raise exceptions.SignatureVerificationFailed()
 
@@ -333,7 +343,7 @@ class BasePublicKey(object):
                 for signature in self.signatures:
                     if not signature.is_self_signature():
                         continue
-                    if signature.type != self._self_sig_type:
+                    if signature.signature_type != self._self_sig_type:
                         continue
                     if last_signature_created < signature.creation_time:
                         most_recent_selfsig = signature
@@ -417,8 +427,9 @@ class BaseSecretKey(BasePublicKey):
         self.checksum = checksum
         self.hash = hash_
 
-    def to_signable_data(self, signature_version=3):
-        return self.to_public_key().to_signable_data(signature_version)
+    def to_signable_data(self, signature_type, signature_version=3):
+        return self.to_public_key().to_signable_data(signature_type,
+                                                     signature_version)
 
     def to_public_key(self):
         key = self._PublicClass(
@@ -481,7 +492,7 @@ class BaseSecretKey(BasePublicKey):
         key_obj = self._get_key_obj()
 
         hash_ = utils.get_hash_instance(hash_algorithm)
-        hash_.update(item.to_signable_data(version))
+        hash_.update(item.to_signable_data(signature_type, version))
         if isinstance(item, (BasePublicKey, UserID, UserAttribute)):
             SigClass = KeySignature
         else:
@@ -510,7 +521,7 @@ class BaseSecretKey(BasePublicKey):
                        hashed_subpackets=hashed_subpackets,
                        unhashed_subpackets=unhashed_subpackets
                        )
-        hash_.update(sig.to_signable_data())
+        hash_.update(sig.to_signable_data(signature_type, version))
         hash2 = bytearray(hash_.digest()[:2])
         sig.hash2 = hash2
 
@@ -583,9 +594,11 @@ class PublicSubkey(BasePublicKey):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
         BasePublicKey.__init__(self, *args, **kwargs)
 
-    def to_signable_data(self, signature_version=3):
-        result = self.primary_public_key.to_signable_data(signature_version)
-        result.extend(super(PublicSubkey, self).to_signable_data(signature_version))
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
+        result.extend(super(PublicSubkey, self).to_signable_data(signature_type,
+                                                                 signature_version))
         return result
 
     @property
@@ -620,8 +633,9 @@ class UserID(object):
             header_format = self.packet_header_type
         return packets.UserIDPacket(header_format, self.user_id)
 
-    def to_signable_data(self, signature_version=3):
-        result = self.primary_public_key.to_signable_data(signature_version)
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
         target_packet_data = self.to_packet().content
         if signature_version >= 4:
             result.append(0xb4)
@@ -741,8 +755,9 @@ class UserAttribute(object):
             subpackets.append(item.to_subpacket())
         return packets.UserAttributePacket(header_format, subpackets)
 
-    def to_signable_data(self, signature_version=3):
-        result = self.primary_public_key.to_signable_data(signature_version)
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
         target_packet_data = self.to_packet().content
         if signature_version >= 4:
             result.append(0xd1)

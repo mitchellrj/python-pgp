@@ -178,7 +178,7 @@ class BaseSignature(object):
                         self.issuer_key_ids[0])
         return packet
 
-    def to_signable_data(self, signature_version=3):
+    def to_signable_data(self, signature_type, signature_version=3):
         result = bytearray()
         if self.version >= 4:
             result.append(self.version)
@@ -522,18 +522,23 @@ class BaseSignature(object):
     embedded_signatures = property(_get_embedded_signatures,
                                    _set_embedded_signatures)
 
-    def _get_key_expiration_seconds(self):
-        return self._get_subpacket_values(
+    def _get_key_expiration_time(self):
+        seconds = self._get_subpacket_values(
             C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
             'time')
+        if not seconds:  # 0 or None
+            return seconds
+        return self.target.creation_time + datetime.timedelta(seconds=seconds)
 
-    def _set_key_expiration_seconds(self, value):
+    def _set_key_expiration_time(self, value):
+        delta = value - self.target.creation_time
+        seconds = delta.days * 86400 + delta.seconds
         self._update_subpacket_values(
             C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
-            'time', value)
+            'time', seconds)
 
-    key_expiration_seconds = property(_get_key_expiration_seconds,
-                                      _set_key_expiration_seconds)
+    key_expiration_time = property(_get_key_expiration_time,
+                                   _set_key_expiration_time)
 
     def _get_preferred_compression_algorithms(self):
         return self._get_subpacket_values(

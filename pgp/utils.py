@@ -279,11 +279,21 @@ def get_symmetric_cipher(type_, key, mode, iv=None, segment_size=None,
     if syncable and cipher not in (aidea, twofish, camellia):
         # We need to wrap the PyCrypto implementation so we can re-sync
         # for OpenPGP's weird CFB mode.
-        return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
-                                           IV=bytes(iv),
-                                           segment_size=segment_size)
+        try:
+            return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
+                                               IV=bytes(iv),
+                                               segment_size=segment_size)
+        except TypeError:
+            return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
+                                               iv=bytes(iv),
+                                               segment_size=segment_size)
 
-    return cipher.new(bytes(key), mode, IV=bytes(iv), segment_size=segment_size)
+    try:
+        return cipher.new(bytes(key), mode, IV=bytes(iv),
+                          segment_size=segment_size)
+    except TypeError:
+        return cipher.new(bytes(key), mode, iv=bytes(iv),
+                          segment_size=segment_size)
 
 
 class NoopCompression(object):
@@ -399,7 +409,7 @@ def get_compression_instance(type_):
         instance = DeflateCompression()
     elif type_ == 2:
         # ZLIB - RFC 1950
-        raise ZlibCompression()
+        instance = ZlibCompression()
     elif type_ == 3:
         instance = bz2.BZ2Compressor()
 
@@ -602,7 +612,7 @@ def int_to_s2k_count(i):
     if i & ((1 << shift) - 1):
         raise ValueError(i)
     bits = (i >> shift) & 15
-    return ((shift - EXPBIAS) << 4) + bits
+    return bytes([((shift - EXPBIAS) << 4) + bits])
 
 
 def int_to_hex(i, expected_size=None):

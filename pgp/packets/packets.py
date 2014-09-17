@@ -16,6 +16,7 @@
 
 import math
 import os
+import time
 import warnings
 
 from Crypto import Random
@@ -89,7 +90,7 @@ class Packet(object):
                             data_length,
                             allow_partial)
                 result.extend(packet_length_bytes)
-                result.extend(data[offset:-remaining])
+                result.extend(data[offset:data_length-remaining])
                 offset = data_length - remaining
 
         else:
@@ -180,29 +181,34 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
 
         return symmetric_algorithm, m[1:-2]
 
-
     @classmethod
-    def _decrypt_(cls):
-        # "First, the session key is prefixed with a one-octet algorithm
-        #  identifier that specifies the symmetric encryption algorithm used
-        #  to encrypt the following Symmetrically Encrypted Data Packet. Then
-        #  a two-octet checksum is appended, which is equal to the sum of the
-        #  preceding session key octets, not including the algorithm
-        #  identifier, modulo 65536."
-        pass
+    def _get_encrypted_key(cls, key_obj, symmetric_algorithm, session_key):
+        cipher = PKCS1_v1_5.new(key_obj)
+        encrypted_key = bytearray()
+        session_key = bytearray(session_key)
+        checksum = sum(session_key) % 65536
+        session_key.insert(0, symmetric_algorithm)
+        session_key.extend(bytearray([
+            checksum >> 8,
+            checksum & 0xff
+            ]))
+        values = cipher.encrypt(session_key)
+        if isinstance(values, bytes):
+            values = (values,)
+        for v in values:
+            encrypted_key.extend(utils.int_to_mpi(utils.bytes_to_int(v, 0, len(v))))
+
+        return encrypted_key
 
     @property
     def content(self):
         key_id = self.key_id
         if key_id is None:
             key_id = '0' * 16
-        data = bytearray(
-                        [self.version] +
-                        utils.hex_to_bytes(key_id, 8) +
-                        [self.public_key_algorithm]
-                    )
-        for value in self.session_key_values:
-            data.extend(utils.int_to_mpi(value))
+        data = bytearray([self.version])
+        data.extend(utils.hex_to_bytes(key_id, 8))
+        data.append(self.public_key_algorithm)
+        data.extend(self.encrypted_session_key)
 
         return data
 
@@ -445,9 +451,10 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
                                                         data,
                                                         offset)
         encrypted_session_key_length = \
-            utils.symmetric_cipher_block_lengths.get(symmetric_algorithm)
+            utils.symmetric_cipher_key_lengths.get(symmetric_algorithm)
+        # + 1 for the symmetric algorithm
         encrypted_session_key = \
-            data[offset:offset + encrypted_session_key_length]
+            data[offset:offset + encrypted_session_key_length + 1]
         result = cls(header_format, version, symmetric_algorithm,
                      s2k_specification, encrypted_session_key)
         result._content = data
@@ -456,7 +463,7 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
     def __init__(self, header_format, version, symmetric_algorithm,
                  s2k_specification, encrypted_session_key=None):
         Packet.__init__(self, header_format,
-                    constants.PUBLIC_KEY_ENCRYPTED_SESSION_KEY_PACKET_TYPE)
+                    constants.SYMMETRIC_KEY_ENCRYPTED_SESSION_KEY_PACKET_TYPE)
         self.version = version
         self.symmetric_algorithm = symmetric_algorithm
         self.s2k_specification = s2k_specification
@@ -500,39 +507,36 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
                                 symmetric_algorithm)
             iv = bytearray([0] * block_size)
             cipher = utils.get_symmetric_cipher(
-                        symmetric_algorithm, key, utils.OPENPGP, iv)
-            decrypted_data = bytearray(cipher.decrypt(encrypted_session_key))
+                        symmetric_algorithm, key, utils.CFB, iv)
+            encrypted_data = bytearray(encrypted_session_key)
+            padding = block_size - (len(encrypted_data) % block_size)
+            encrypted_data.extend([0] * padding)
+            decrypted_data = bytearray(cipher.decrypt(bytes(encrypted_data))[:-padding])
             symmetric_algorithm = decrypted_data[0]
             key = bytes(decrypted_data[1:])
 
-        return key, symmetric_algorithm
+        return symmetric_algorithm, key
 
     @classmethod
-    def _decrypt_packet_data(cls, key, symmetric_algorithm, data):
+    def _get_encrypted_key(cls, s2k_specification, symmetric_algo, passphrase,
+                           session_key):
+        s2k_sym_algo = s2k_specification.symmetric_algorithm
+        key = s2k_specification.to_key(passphrase)
         block_size = utils.symmetric_cipher_block_lengths.get(
-                            symmetric_algorithm)
+                            s2k_sym_algo)
         iv = bytearray([0] * block_size)
         cipher = utils.get_symmetric_cipher(
-                    symmetric_algorithm, key, utils.OPENPGP, iv)
-        decrypted_data = cipher.decrypt(data)
-        pkts = []
-        offset = 0
-        data_length = len(decrypted_data)
-        while offset < data_length:
-            packet, offset = packet_from_packet_data(decrypted_data, offset)
-            pkts.append(packet)
-        return pkts
-
-    def decrypt_packet_data(self, passphrase, data):
-        key, symmetric_algorithm = self.get_key_and_cipher_algo(passphrase)
-        return self._decrypt_packet_data(key, symmetric_algorithm, data)
+                    s2k_sym_algo, key, utils.CFB, iv)
+        data = bytearray([symmetric_algo])
+        data.extend(session_key)
+        padding = block_size - len(data) % block_size
+        data.extend([0] * padding)
+        return bytearray(cipher.encrypt(bytes(data))[:-padding])
 
     @property
     def content(self):
-        data = bytearray(
-                        [self.version, self.symmetric_algorithm] +
-                        bytes(self.s2k_specification)
-                    )
+        data = bytearray([self.version, self.symmetric_algorithm])
+        data.extend(bytes(self.s2k_specification))
         if self.encrypted_session_key is not None:
             data.extend(self.encrypted_session_key)
 
@@ -565,6 +569,7 @@ class OnePassSignaturePacket(Packet):
                  public_key_algorithm, key_id, nested):
         Packet.__init__(self, header_format,
                         constants.ONE_PASS_SIGNATURE_PACKET_TYPE)
+        self.version = version
         self.signature_type = signature_type
         self.hash_algorithm = hash_algorithm
         self.public_key_algorithm = public_key_algorithm
@@ -1047,45 +1052,48 @@ class CompressedDataPacket(Packet):
     def from_packet_content(cls, header_format, type_, data):
         compression_algorithm = int(data[0])
         compressed_data = data[1:]
-        algo = utils.get_compression_instance(compression_algorithm)
-        packet_data = algo.decompress(compressed_data)
-        packet_data += algo.flush()
-        packet_data_length = len(packet_data)
-        packets = []
-        offset = 0
-        while offset < packet_data_length:
-            offset, packet = packet_from_packet_data(packet_data, offset)
-            packets.append(packet)
-        result = cls(header_format, compression_algorithm, packets)
+        result = cls(header_format, compression_algorithm, compressed_data)
         result._content = data
         return result
 
-    def __init__(self, header_format, compression_algorithm, packets=None):
-        Packet.__init__(header_format, constants.COMPRESSED_DATA_PACKET_TYPE)
+    def __init__(self, header_format, compression_algorithm, compressed_data):
+        super(CompressedDataPacket, self).__init__(
+            header_format, constants.COMPRESSED_DATA_PACKET_TYPE)
         self.compression_algorithm = compression_algorithm
-        if packets is None:
-            packets = []
-        self.packets = packets
+        self.compressed_data = compressed_data
+
+    @classmethod
+    def compress_packets(cls, algorithm, packets):
+        algo = utils.get_compression_instance(algorithm)
+        packet_data = b''.join(map(bytes, packets))
+        data = algo.compress(packet_data)
+        data += algo.flush()
+        return data
+
+    @classmethod
+    def decompress_data(cls, algorithm, data):
+        algo = utils.get_compression_instance(algorithm)
+        packet_data = algo.decompress(data)
+        packet_data += algo.flush()
+        packets = []
+        offset = 0
+        length = len(packet_data)
+        while offset < length:
+            offset, packet = packet_from_packet_data(packet_data, offset)
+            packets.append(packet)
+        return packets
 
     def __eq__(self, other):
         return (
             super(CompressedDataPacket, self).__eq__(other)
             and self.compression_algorithm == other.compression_algorithm
-            and self.packets == other.packets
+            and self.compressed_data == other.compressed_data
             )
 
     @property
     def content(self):
         data = bytearray([self.compression_algorithm])
-
-        packet_data = bytearray()
-        for packet in self.packets:
-            packet_data.extend(bytes(packet))
-
-        algo = utils.get_compression_instance(self.compression_algorithm)
-        data.extend(algo.compress(packet_data))
-        data.extend(algo.flush())
-
+        data.extend(self.compressed_data)
         return data
 
 
@@ -1141,7 +1149,7 @@ class LiteralDataPacket(Packet):
     @classmethod
     def from_packet_content(cls, header_format, type_, data):
         offset = 0
-        data_format = bytes(data[offset])
+        data_format = bytes([data[offset]])
         offset += 1
         filename_length = int(data[offset])
         offset += 1
@@ -1202,7 +1210,8 @@ class LiteralDataPacket(Packet):
         # "Unless otherwise specified, the character set for text is the
         #  UTF-8"
         data.extend(self.filename.encode('utf8', 'replace'))
-        data.extend(utils.int_to_4byte(self.time))
+        timestamp = int(time.mktime(self.time.timetuple()))
+        data.extend(utils.int_to_4byte(timestamp))
         content = self.data
         if self.data_format in (b't', b'u'):
             content.replace(os.linesep, '\r\n')
@@ -1569,30 +1578,25 @@ def packet_from_packet_data(data, offset=0):
 
     packet_data = bytearray()
     incomplete = True
-    previous_tag = None
+    tag = None
     previous_header_type = None
     while incomplete:
-        tag = data[offset] & 0x3f
-        if previous_tag is not None:
-            if tag != previous_tag:
-                # TODO: complete message
-                raise ValueError()
-        previous_tag = tag
-        header_type = (
-                constants.NEW_PACKET_HEADER_TYPE
-                if bool(data[offset] & 0x40)
-                else constants.OLD_PACKET_HEADER_TYPE
-            )
-        if previous_header_type is not None:
-            if header_type != previous_header_type:
-                # TODO: complete message
-                raise ValueError()
+        if not tag:
+            tag = data[offset] & 0x3f
+            header_type = (
+                    constants.NEW_PACKET_HEADER_TYPE
+                    if bool(data[offset] & 0x40)
+                    else constants.OLD_PACKET_HEADER_TYPE
+                )
+            if header_type == constants.NEW_PACKET_HEADER_TYPE:
+                offset += 1
+            else:
+                tag >>= 2
+
         if header_type == constants.NEW_PACKET_HEADER_TYPE:
-            offset += 1
             offset, data_length, incomplete = utils.new_packet_length(
                     data, offset)
         else:
-            tag >>= 2
             offset, data_length = utils.old_packet_length(data, offset)
             incomplete = False
 

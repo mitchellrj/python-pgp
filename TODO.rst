@@ -7,10 +7,6 @@ Keys
 ----
 
  * Generate a key pair
- * Sign data
- * Encrypt data
- * Decrypt data
- * Sign a key
  * Sign a key locally
  * Edit a key
  * Generate a revocation certificate
