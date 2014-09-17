@@ -507,7 +507,7 @@ class RevocationReasonSubpacket(SignatureSubpacket):
         self.revocation_reason = revocation_reason
 
     @property
-    def content_(self):
+    def content(self):
         data = bytearray([self.revocation_code])
         data += bytearray(
                         self.revocation_reason.encode('utf8', 'replace')
