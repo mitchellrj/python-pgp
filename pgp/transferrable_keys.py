@@ -108,25 +108,27 @@ class SignedMixin(object):
         return most_recent_selfsig
 
     @staticmethod
-    def __selfsig_attribute(name, revocation=False):
+    def __selfsig_attribute(name, default=None, revocation=False):
         def getter(self):
             if self.version >= 4:
-                most_recent_selfsig = self.get_most_recent_selfsig(self, revocation)
-                result = getattr(most_recent_selfsig, name, None)
+                most_recent_selfsig = self.get_most_recent_selfsig(revocation)
+                result = getattr(most_recent_selfsig, name, default)
 
             return result
 
         def setter(self, value):
             if self.version >= 4:
-                most_recent_selfsig = self.get_most_recent_selfsig(self, revocation)
+                most_recent_selfsig = self.get_most_recent_selfsig(revocation)
                 setattr(most_recent_selfsig, name, value)
 
         return property(getter, setter)
 
     __selfsig_attribute = __selfsig_attribute.__func__
 
-    revocation_reason = __selfsig_attribute('revocation_reason', True)
-    revocation_code = __selfsig_attribute('revocation_code', True)
+    revocation_reason = __selfsig_attribute('revocation_reason', revocation=True)
+    revocation_code = __selfsig_attribute('revocation_code', revocation=True)
+    # Overridden in keys
+    creation_time = __selfsig_attribute('creation_time')
     expiration_time = __selfsig_attribute('key_expiration_time')
     preferred_compression_algorithms = \
         __selfsig_attribute('preferred_compression_algorithms', [])
