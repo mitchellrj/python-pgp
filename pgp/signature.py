@@ -518,7 +518,7 @@ class BaseSignature(object):
     def _get_embedded_signatures(self):
         subpackets = self._get_subpackets(C.EMBEDDED_SIGNATURE_SUBPACKET_TYPE)
         return [
-            self.__class__.from_packet(s.signature)
+            self.__class__.from_packet(s.signature, self)
             for s in subpackets
         ]
 
