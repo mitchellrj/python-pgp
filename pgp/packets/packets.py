@@ -1164,7 +1164,7 @@ class LiteralDataPacket(Packet):
         encoding = None
         if b't' == data_format:
             # TODO: Unknown encoding
-            encoding = 'ascii'
+            encoding = 'latin-1'
         elif b'u' == data_format:
             encoding = 'utf8'
         elif b'b' == data_format:
@@ -1216,7 +1216,7 @@ class LiteralDataPacket(Packet):
         if self.data_format in (b't', b'u'):
             content.replace(os.linesep, '\r\n')
         if self.data_format == b't':
-            content = content.encode('ascii', 'replace')
+            content = content.encode('latin-1', 'replace')
         elif self.data_format == b'u':
             content = content.encode('utf8', 'replace')
         data.extend(content)
