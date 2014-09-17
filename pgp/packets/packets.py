@@ -79,12 +79,12 @@ class Packet(object):
         if self.header_format == constants.NEW_PACKET_HEADER_TYPE:
             remaining = data_length
             offset = 0
+            tag += 0x40 + packet_type
+            result = bytearray([tag])
             while remaining:
                 # "An implementation MAY use Partial Body Lengths for data
                 #  packets, be they literal, compressed, or encrypted."
                 allow_partial = self.type in constants.DATA_TYPES
-                tag += 0x40 + packet_type
-                result = bytearray([tag])
                 packet_length_bytes, remaining = \
                     utils.new_packet_length_to_bytes(
                             data_length,
