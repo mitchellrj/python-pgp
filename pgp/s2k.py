@@ -18,7 +18,7 @@ class SimpleS2K(object):
         offset += 1
         return cls(hash_algorithm, symmetric_algorithm), offset
 
-    def __init__(self, hash_algorithm, symmetric_algorithm):
+    def __init__(self, hash_algorithm, symmetric_algorithm, *args, **kwargs):
         self.hash_algorithm = hash_algorithm
         self.symmetric_algorithm = symmetric_algorithm
         self.salt = bytearray()
@@ -34,7 +34,7 @@ class SimpleS2K(object):
             )
 
     def __bytes__(self):
-        return bytes(bytearray([self.hash_algorithm]) + bytearray(self.salt))
+        return bytes(bytearray([self.mode, self.hash_algorithm]) + bytearray(self.salt))
 
     def to_key(self, passphrase):
         required_length = utils.symmetric_cipher_key_lengths.get(
@@ -87,9 +87,9 @@ class SaltedS2K(SimpleS2K):
         offset += 1
         salt = data[offset:offset + 8]
         offset += 8
-        return cls(hash_algorithm, salt, symmetric_algorithm), offset
+        return cls(hash_algorithm, symmetric_algorithm, salt), offset
 
-    def __init__(self, hash_algorithm, salt, symmetric_algorithm):
+    def __init__(self, hash_algorithm, symmetric_algorithm, salt, *args, **kwargs):
         SimpleS2K.__init__(self, hash_algorithm, symmetric_algorithm)
         self.salt = salt
 
@@ -104,17 +104,17 @@ class IteratedAndSaltedS2K(SaltedS2K):
         offset += 1
         salt = data[offset:offset + 8]
         offset += 8
-        count = utils.s2k_count_to_int(int(data[offset]))
+        count = utils.s2k_count_to_int(data[offset])
         offset += 1
-        return cls(hash_algorithm, salt, count, symmetric_algorithm), offset
+        return cls(hash_algorithm, symmetric_algorithm, salt, count), offset
 
-    def __init__(self, hash_algorithm, salt, count, symmetric_algorithm):
-        SaltedS2K.__init__(self, hash_algorithm, salt, symmetric_algorithm)
+    def __init__(self, hash_algorithm, symmetric_algorithm, salt, count):
+        SaltedS2K.__init__(self, hash_algorithm, symmetric_algorithm, salt)
         self.count = count
 
     def __bytes__(self):
         result = SaltedS2K.__bytes__(self)
-        result += bytes(utils.int_to_s2k_count(self.count))
+        result += utils.int_to_s2k_count(self.count)
         return result
 
 

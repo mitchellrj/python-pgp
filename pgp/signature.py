@@ -180,6 +180,27 @@ class BaseSignature(object):
                         self.issuer_key_ids[0])
         return packet
 
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = bytearray()
+        if self.version >= 4:
+            result.append(self.version)
+        result.append(self.signature_type)
+        if self.version < 4:
+            result.extend(utils.int_to_4byte(
+                time.mktime(self.creation_time.timetuple())
+            ))
+        else:
+            result.append(self.public_key_algorithm)
+            result.append(self.hash_algorithm)
+            hashed_subpacket_data = b''.join(map(bytes, self.hashed_subpackets))
+            hashed_subpacket_length = len(hashed_subpacket_data)
+            result.extend(utils.int_to_2byte(hashed_subpacket_length))
+            result.extend(hashed_subpacket_data)
+            result.append(self.version)
+            result.append(255)
+            result.extend(utils.int_to_4byte(hashed_subpacket_length + 6))
+        return result
+
     def __repr__(self):
         validation = ''
         if self.validated is True:
@@ -527,21 +548,16 @@ class BaseSignature(object):
             'time')
         # "If this is not present or has a value of zero, the key never
         #  expires."
-        if not seconds:
-            return None
-        return self.parent.creation_time + datetime.timedelta(seconds=seconds)
+        if not seconds:  # 0 or None
+            return seconds
+        return self.target.creation_time + datetime.timedelta(seconds=seconds)
 
-    def _set_key_expiration_time(self, dt):
-        if dt is None:
-            value = 0
-        elif dt < self.parent.creation_time:
-            raise ValueError
-        else:
-            td = dt - self.parent.creation_time
-            value = td.seconds + td.days * 86400
-            self._update_subpacket_values(
-                C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
-                'time', value)
+    def _set_key_expiration_time(self, value):
+        delta = value - self.target.creation_time
+        seconds = delta.days * 86400 + delta.seconds
+        self._update_subpacket_values(
+            C.KEY_EXPIRATION_TIME_SUBPACKET_TYPE,
+            'time', seconds)
 
     key_expiration_time = property(_get_key_expiration_time,
                                    _set_key_expiration_time)

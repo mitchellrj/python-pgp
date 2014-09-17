@@ -2,6 +2,7 @@ import pkg_resources
 
 from pgp import armor
 from pgp.db.gpg import GPGDatabase
+from pgp.message import open_pgp_message_from_packets
 from pgp.packets import constants
 from pgp.packets import parse_binary_packet_data
 from pgp.packets import parse_ascii_packet_data
@@ -10,6 +11,31 @@ from pgp.transferrable_keys import TransferableSecretKey
 
 
 VERSION = pkg_resources.get_distribution('pgp').version
+
+
+def read_message(data, armored=False):
+    if armor.is_armor(data):
+        # Assume the user made a mistake
+        if isinstance(data, bytes):
+            data = data.decode('us-ascii')
+        armored = True
+    if armored:
+        fn = parse_ascii_packet_data
+    else:
+        fn = parse_binary_packet_data
+
+    packets = list(fn(data))
+    return open_pgp_message_from_packets(packets)
+
+
+def read_message_file(filename, armored=False):
+    if armored:
+        mode = 'r'
+    else:
+        mode = 'rb'
+
+    with open(filename, mode) as fh:
+        return read_message(fh.read(), armored)
 
 
 def read_key(data, armored=False):
@@ -68,10 +94,6 @@ def write_key_file(key, filename, armored=False):
 
     with open(filename, mode) as fh:
         fh.write(data)
-
-
-def verify():
-    pass
 
 
 def generate(public_key_algorithm, bits, hash_algorithm, user_id, password):

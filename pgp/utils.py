@@ -92,10 +92,10 @@ symmetric_cipher_key_lengths = {
     }
 
 
-def sign_hash(pub_algorithm_type, secret_key, data, k=None):
+def sign_hash(pub_algorithm_type, secret_key, hash_, k=None):
     if pub_algorithm_type in (1, 3):
         # RSA
-        sig_string = PKCS1_v1_5.new(secret_key).sign(data)
+        sig_string = PKCS1_v1_5.new(secret_key).sign(hash_)
         return (bytes_to_long(sig_string),)
     elif pub_algorithm_type == 20:
         # ELG
@@ -109,7 +109,7 @@ def sign_hash(pub_algorithm_type, secret_key, data, k=None):
             print(k)
         # TODO: Remove dependence on undocumented method
         sig_string = PKCS1_v1_5.EMSA_PKCS1_V1_5_ENCODE(
-                            data, secret_key.size())
+                            hash_, secret_key.size())
         return secret_key.sign(sig_string, k)
     elif pub_algorithm_type == 17:
         q = secret_key.q
@@ -118,7 +118,7 @@ def sign_hash(pub_algorithm_type, secret_key, data, k=None):
         if k is None:
             k = random.StrongRandom().randint(1, q - 1)
 
-        digest = data[:qbytes]
+        digest = hash_.digest()[:qbytes]
         return secret_key.sign(bytes_to_long(digest), k)
     else:
         # TODO: complete
@@ -280,11 +280,21 @@ def get_symmetric_cipher(type_, key, mode, iv=None, segment_size=None,
     if syncable and cipher not in (aidea, twofish, camellia):
         # We need to wrap the PyCrypto implementation so we can re-sync
         # for OpenPGP's weird CFB mode.
-        return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
-                                           IV=bytes(iv),
-                                           segment_size=segment_size)
+        try:
+            return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
+                                               IV=bytes(iv),
+                                               segment_size=segment_size)
+        except TypeError:
+            return syncable_cipher_wrapper.new(cipher, bytes(key), mode,
+                                               iv=bytes(iv),
+                                               segment_size=segment_size)
 
-    return cipher.new(bytes(key), mode, IV=bytes(iv), segment_size=segment_size)
+    try:
+        return cipher.new(bytes(key), mode, IV=bytes(iv),
+                          segment_size=segment_size)
+    except TypeError:
+        return cipher.new(bytes(key), mode, iv=bytes(iv),
+                          segment_size=segment_size)
 
 
 class NoopCompression(object):
@@ -400,20 +410,20 @@ def get_compression_instance(type_):
         instance = DeflateCompression()
     elif type_ == 2:
         # ZLIB - RFC 1950
-        raise ZlibCompression()
+        instance = ZlibCompression()
     elif type_ == 3:
         instance = bz2.BZ2Compressor()
 
     return instance
 
 
-def hash_key(hash_, key_packet_data):
+def hash_key(data_to_hash, key_packet_data):
     """Adds key data to a hash for signature comparison."""
 
     key_length = len(key_packet_data)
-    hash_.update(b'\x99')
-    hash_.update(int_to_2byte(key_length))
-    hash_.update(key_packet_data)
+    data_to_hash.append(0x99)
+    data_to_hash.extend(int_to_2byte(key_length))
+    data_to_hash.extend(key_packet_data)
 
 
 def packet_type_from_first_byte(byte_):
@@ -422,21 +432,21 @@ def packet_type_from_first_byte(byte_):
     return (byte_ & 0x3f) >> 2
 
 
-def hash_user_data(hash_, target_type, target_packet_data, signature_version):
+def hash_user_data(data_to_hash, target_type, target_packet_data, signature_version):
     """Adds user attribute & user id packets to a hash for signature
     comparison.
     """
 
     if target_type == 13:
         if signature_version >= 4:
-            hash_.update(bytearray([0xb4]))
-            hash_.update(int_to_4byte(len(target_packet_data)))
-        hash_.update(target_packet_data)
+            data_to_hash.append(0xb4)
+            data_to_hash.extend(int_to_4byte(len(target_packet_data)))
+        data_to_hash.extend(target_packet_data)
     elif target_type == 17:
         if signature_version >= 4:
-            hash_.update(bytearray([0xd1]))
-            hash_.update(int_to_4byte(len(target_packet_data)))
-        hash_.update(target_packet_data)
+            data_to_hash.extend(bytearray([0xd1]))
+            data_to_hash.extend(int_to_4byte(len(target_packet_data)))
+        data_to_hash.extend(target_packet_data)
 
 
 def hash_packet_for_signature(packet_for_hash,
@@ -447,6 +457,7 @@ def hash_packet_for_signature(packet_for_hash,
                               fake_hash_algorithm_type=None):
     hash_ = get_hash_instance(hash_algorithm_type)
 
+    data_to_hash = bytearray()
     public_key_packet_data = None
     if public_key_packet is not None:
         public_key_packet_data = public_key_packet.content
@@ -454,20 +465,20 @@ def hash_packet_for_signature(packet_for_hash,
     if signature_type in (constants.SIGNATURE_DIRECTLY_ON_A_KEY,
                           constants.KEY_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
+        hash_key(data_to_hash, public_key_packet_data)
     elif signature_type in (constants.SUBKEY_BINDING_SIGNATURE,
                             constants.PRIMARY_KEY_BINDING_SIGNATURE,
                             constants.SUBKEY_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
-        hash_key(hash_, packet_data_for_hash)
+        hash_key(data_to_hash, public_key_packet_data)
+        hash_key(data_to_hash, packet_data_for_hash)
     elif signature_type == constants.THIRD_PARTY_CONFIRMATION_SIGNATURE:
-        hash_.update(b'\x88')
-        hash_.update(len(packet_data_for_hash))
-        hash_.update(packet_data_for_hash)
+        data_to_hash.append(0x88)
+        data_to_hash.append(len(packet_data_for_hash))
+        data_to_hash.extend(packet_data_for_hash)
     elif signature_type in (constants.SIGNATURE_OF_A_BINARY_DOCUMENT,
                             constants.SIGNATURE_OF_A_CANONICAL_TEXT_DOCUMENT):
-        hash_.update(packet_data_for_hash)
+        data_to_hash.extend(packet_data_for_hash)
     elif signature_type == constants.STANDALONE_SIGNATURE:
         pass
     elif signature_type in (constants.GENERIC_CERTIFICATION,
@@ -476,8 +487,8 @@ def hash_packet_for_signature(packet_for_hash,
                             constants.POSITIVE_CERTIFICATION,
                             constants.CERTIFICATION_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
-        hash_key(hash_, public_key_packet_data)
-        hash_user_data(hash_, packet_for_hash.type, packet_data_for_hash,
+        hash_key(data_to_hash, public_key_packet_data)
+        hash_user_data(data_to_hash, packet_for_hash.type, packet_data_for_hash,
                        signature_version)
     elif signature_type == constants.TIMESTAMP_SIGNATURE:
         # Timestamp signatures are poorly defined and semi-deprecated.
@@ -488,25 +499,27 @@ def hash_packet_for_signature(packet_for_hash,
         # https://tools.ietf.org/html/rfc1991
         # http://www.imc.org/ietf-openpgp/mail-archive/msg04966.html
         # http://www.imc.org/ietf-openpgp/mail-archive/msg04970.html
-        hash_.update(b'\x88')
-        hash_.update(len(packet_data_for_hash))
-        hash_.update(packet_data_for_hash)
+        data_to_hash.append(0x88)
+        data_to_hash.append(len(packet_data_for_hash))
+        data_to_hash.extend(packet_data_for_hash)
 
     if signature_version >= 4:
-        hash_.update(bytearray([signature_version]))
-    hash_.update(bytearray([signature_type]))
+        data_to_hash.append(signature_version)
+    data_to_hash.append(signature_type)
     if signature_version < 4:
-        hash_.update(int_to_4byte(signature_creation_time))
+        data_to_hash.extend(int_to_4byte(signature_creation_time))
     else:
-        hash_.update(bytearray([pub_algorithm_type]))
-        hash_.update(bytearray([fake_hash_algorithm_type or hash_algorithm_type]))
+        data_to_hash.append(pub_algorithm_type)
+        data_to_hash.append(fake_hash_algorithm or hash_algorithm_type)
         hashed_subpacket_length = len(hashed_subpacket_data)
-        hash_.update(int_to_2byte(hashed_subpacket_length))
-        hash_.update(hashed_subpacket_data)
-        hash_.update(bytearray([signature_version]))
-        hash_.update(bytearray([255]))
-        hash_.update(int_to_4byte(hashed_subpacket_length + 6))
+        data_to_hash.extend(int_to_2byte(hashed_subpacket_length))
+        data_to_hash.extend(hashed_subpacket_data)
+        data_to_hash.append(signature_version)
+        data_to_hash.append(255)
+        data_to_hash.extend(int_to_4byte(hashed_subpacket_length + 6))
 
+    hash_ = get_hash_instance(hash_algorithm_type)
+    hash_.update(data_to_hash)
     return hash_
 
 
@@ -610,7 +623,7 @@ def int_to_s2k_count(i):
     if i & ((1 << shift) - 1):
         raise ValueError(i)
     bits = (i >> shift) & 15
-    return ((shift - EXPBIAS) << 4) + bits
+    return bytes([((shift - EXPBIAS) << 4) + bits])
 
 
 def int_to_hex(i, expected_size=None):

@@ -29,6 +29,7 @@ from pgp import interfaces
 from pgp import exceptions
 from pgp.packets import constants as C
 from pgp.packets import packets
+from pgp.packets import signature_subpackets
 from pgp.packets import user_attribute_subpackets
 from pgp.signature import BaseSignature
 from pgp.user_id import parse_user_id
@@ -230,10 +231,15 @@ class BasePublicKey(SignedMixin):
         args = self._to_packet_args(header_format)
         return self._PacketClass(*args)
 
-    def verify(self, signature):
-        raise NotImplemented
+    def to_signable_data(self, signature_type, signature_version=3):
+        key_packet_data = self.to_packet().content
+        key_length = len(key_packet_data)
+        result = bytearray([0x99])
+        result.extend(utils.int_to_2byte(key_length))
+        result.extend(key_packet_data)
+        return result
 
-    def encrypt(self, data):
+    def encrypt(self, message):
         raise NotImplemented
 
     signatures = None
@@ -346,6 +352,7 @@ class BasePublicKey(SignedMixin):
 
     def _get_key_obj(self):
         key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+
         if self.public_key_algorithm == 17:
             key_obj = key_constructor((long(self.key_value_y),
                                        long(self.group_generator_g),
@@ -357,7 +364,7 @@ class BasePublicKey(SignedMixin):
                                        long(self.group_generator_g),
                                        long(self.key_value_y)
                                        ))
-        elif algorithm_type in (1, 3):
+        elif self.public_key_algorithm in (1, 3):
             key_obj = key_constructor((long(self.modulus_n),
                                        long(self.exponent_e)
                                        ))
@@ -366,14 +373,27 @@ class BasePublicKey(SignedMixin):
 
         return key_obj
 
-    def verify(self, signature, expected_hash):
+    def verify(self, signature, item):
+        if self.key_id not in signature.issuer_key_ids:
+            raise exceptions.SignatureVerificationFailed('Signature not made by this key.')
+
+        if self.public_key_algorithm != signature.public_key_algorithm:
+            raise exceptions.SignatureVerificationFailed('Signature not made by this key.')
+
         signature_values = signature.signature_values
 
         key_obj = self._get_key_obj()
+        hash_ = utils.get_hash_instance(signature.hash_algorithm)
+        hash_.update(item.to_signable_data(signature.signature_type,
+                                           signature.version))
+        hash_.update(signature.to_signable_data(signature.signature_type,
+                                                signature.version))
+        if hash_.digest()[:2] != signature.hash2:
+            raise exceptions.SignatureVerificationFailed()
 
-        if not utils.verify_hash(algorithm_type, key_obj, expected_hash,
-                                 signature_values):
-            raise SignatureVerificationFailed()
+        if not utils.verify_hash(signature.public_key_algorithm, key_obj,
+                                 hash_, signature_values):
+            raise exceptions.SignatureVerificationFailed()
 
         return True
 
@@ -422,15 +442,17 @@ class BaseSecretKey(BasePublicKey):
         self.checksum = checksum
         self.hash = hash_
 
+    def to_signable_data(self, signature_type, signature_version=3):
+        return self.to_public_key().to_signable_data(signature_type,
+                                                     signature_version)
+
     def to_public_key(self):
         key = self._PublicClass(
             self.version, self.public_key_algorithm, self.creation_time,
             self.expiration_time, self.modulus_n, self.exponent_e,
             self.prime_p, self.group_generator_g, self.group_order_q,
             self.key_value_y, self.signatures)
-        key.user_ids = self.user_ids
-        key.user_attributes = self.user_attributes
-        key.subkeys = map(lambda k: k.to_public_key(), self.subkeys)
+        key.packet_header_type = self.packet_header_type
         return key
 
     def _to_packet_args(self, header_format=None):
@@ -441,6 +463,9 @@ class BaseSecretKey(BasePublicKey):
 
     def _get_key_obj(self):
         key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+        if self.is_locked():
+            return super(BaseSecretKey, self)._get_key_obj()
+
         if self.public_key_algorithm == 17:
             key_obj = key_constructor((long(self.key_value_y),
                                        long(self.group_generator_g),
@@ -467,17 +492,56 @@ class BaseSecretKey(BasePublicKey):
 
         return key_obj
 
-    def sign(self, data):
+    def decrypt(self, message):
+        if self.is_locked():
+            raise RuntimeError('Secret key must be unlocked before decrypting.')
+
+    def sign(self, item, version, signature_type, hash_algorithm,
+             hashed_subpackets=None):
         if self.is_locked():
             raise RuntimeError('Secret key must be unlocked before signing.')
-        signature_values = signature.signature_values
 
         key_obj = self._get_key_obj()
 
-        if not utils.sign_hash(self.public_key_algorithm, key_obj, data):
-            raise SignatureVerificationFailed()
+        hash_ = utils.get_hash_instance(hash_algorithm)
+        hash_.update(item.to_signable_data(signature_type, version))
+        if isinstance(item, (BasePublicKey, UserID, UserAttribute)):
+            SigClass = KeySignature
+        else:
+            SigClass = BaseSignature
+        creation_time = int(time.time())
+        issuer_key_id = self.key_id
+        hashed_subpackets = hashed_subpackets or []
+        unhashed_subpackets = []
+        creation_time_arg = None
+        issuer_key_id_arg = None
+        if version in (2, 3):
+            creation_time_arg = creation_time
+            issuer_key_id_arg = issuer_key_id
+        elif version == 4:
+            creation_time_subpacket = signature_subpackets.CreationTimeSubpacket(
+                False, creation_time)
+            issuer_subpacket = signature_subpackets.IssuerSubpacket(
+                False, issuer_key_id)
+            hashed_subpackets.insert(0, creation_time_subpacket)
+            hashed_subpackets.insert(0, issuer_subpacket)
 
-        return signature_values
+        sig = SigClass(item, version, signature_type,
+                       self.public_key_algorithm, hash_algorithm, hash2=b'',
+                       signature_values=(), creation_time=creation_time_arg,
+                       issuer_key_id=issuer_key_id_arg,
+                       hashed_subpackets=hashed_subpackets,
+                       unhashed_subpackets=unhashed_subpackets
+                       )
+        hash_.update(sig.to_signable_data(signature_type, version))
+        hash2 = bytearray(hash_.digest()[:2])
+        sig.hash2 = hash2
+
+        signature_values = utils.sign_hash(self.public_key_algorithm, key_obj,
+                                           hash_)
+        sig.signature_values = signature_values
+
+        return sig
 
     def unlock(self, passphrase):
         if self.s2k_specification is not None:
@@ -542,6 +606,13 @@ class PublicSubkey(BasePublicKey):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
         BasePublicKey.__init__(self, *args, **kwargs)
 
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
+        result.extend(super(PublicSubkey, self).to_signable_data(signature_type,
+                                                                 signature_version))
+        return result
+
     @property
     def primary_public_key(self):
         return self._primary_public_key_ref()
@@ -555,6 +626,15 @@ class SecretSubkey(PublicSubkey, BaseSecretKey):
     def __init__(self, primary_public_key, *args, **kwargs):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
         BaseSecretKey.__init__(self, *args, **kwargs)
+
+    def to_public_key(self):
+        key = self._PublicClass(
+            self.primary_public_key, self.version, self.public_key_algorithm,
+            self.creation_time, self.expiration_time, self.modulus_n,
+            self.exponent_e, self.prime_p, self.group_generator_g,
+            self.group_order_q, self.key_value_y, self.signatures)
+        key.packet_header_type = self.packet_header_type
+        return key
 
 
 @implementer(interfaces.IUserID)
@@ -579,6 +659,16 @@ class UserID(SignedMixin):
         if header_format is None:
             header_format = self.packet_header_type
         return packets.UserIDPacket(header_format, self.user_id)
+
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
+        target_packet_data = self.to_packet().content
+        if signature_version >= 4:
+            result.append(0xb4)
+            result.extend(utils.int_to_4byte(len(target_packet_data)))
+        result.extend(target_packet_data)
+        return result
 
     def __init__(self, primary_public_key, user_id, signatures=None):
         if signatures is None:
@@ -694,6 +784,16 @@ class UserAttribute(SignedMixin):
         for item in self.content_items:
             subpackets.append(item.to_subpacket())
         return packets.UserAttributePacket(header_format, subpackets)
+
+    def to_signable_data(self, signature_type, signature_version=3):
+        result = self.primary_public_key.to_signable_data(signature_type,
+                                                          signature_version)
+        target_packet_data = self.to_packet().content
+        if signature_version >= 4:
+            result.append(0xd1)
+            result.extend(utils.int_to_4byte(len(target_packet_data)))
+        result.extend(target_packet_data)
+        return result
 
     def __init__(self, primary_public_key, content_items, signatures=None):
         if signatures is None:
@@ -884,7 +984,10 @@ class TransferablePublicKey(BasePublicKey):
         subkeys = primary_public_key.subkeys
         while (
             i < packet_count
-            and packets[i].type == C.PUBLIC_SUBKEY_PACKET_TYPE
+            and packets[i].type in (
+                C.PUBLIC_SUBKEY_PACKET_TYPE,
+                C.SECRET_SUBKEY_PACKET_TYPE
+                )
             ):
 
             subkey = cls._SubkeyClass.from_packet(primary_public_key,
@@ -944,3 +1047,20 @@ class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
         self.user_ids = []
         self.user_attributes = []
         self.subkeys = []
+
+    def to_public_key(self):
+        key = super(TransferableSecretKey, self).to_public_key()
+        key.user_ids = self.user_ids
+        key.user_attributes = self.user_attributes
+        key.subkeys = list(map(lambda k: k.to_public_key(), self.subkeys))
+        return key
+
+    def unlock(self, passphrase):
+        super(TransferableSecretKey, self).unlock(passphrase)
+        for sk in self.subkeys:
+            sk.unlock(passphrase)
+
+    def lock(self):
+        super(TransferableSecretKey, self).lock()
+        for sk in self.subkeys:
+            sk.lock()
