@@ -11,14 +11,6 @@ Keys
  * Edit a key
  * Generate a revocation certificate
 
-Key servers
------------
-
- * Receive a key
- * Send a key
- * Search keys
- * Refresh keys
-
 Key database
 ------------
 
