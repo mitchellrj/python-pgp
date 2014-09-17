@@ -1030,3 +1030,13 @@ class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
         key.user_attributes = self.user_attributes
         key.subkeys = list(map(lambda k: k.to_public_key(), self.subkeys))
         return key
+
+    def unlock(self, passphrase):
+        super(TransferableSecretKey, self).unlock(passphrase)
+        for sk in self.subkeys:
+            sk.unlock(passphrase)
+
+    def lock(self):
+        super(TransferableSecretKey, self).lock()
+        for sk in self.subkeys:
+            sk.lock()
