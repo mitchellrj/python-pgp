@@ -48,10 +48,11 @@ class SignedMixin(object):
     def self_signatures(self):
         result = []
         for s in self.signatures:
-            key_ids = set([self.primary_public_key.key_id])
+            pk = self.primary_public_key or self
+            key_ids = set([pk.key_id])
             key_ids |= set([
                 subkey.key_id for subkey in
-                self.primary_public_key.subkeys
+                pk.subkeys
                 ])
             if key_ids & set(s.issuer_key_ids):
                 # is selfsig
