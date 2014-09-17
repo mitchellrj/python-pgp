@@ -24,26 +24,18 @@ from collections import OrderedDict
 from pgp import utils
 
 
-IGNORED_KEYS = ('data', 'data_file_hash', 'data_file', 'signatures',
-                'key_hash', '_skeleton', '_obj', '_packet', '_sig_hash2',
-                '_data')
-
-
-def key_data_equal(key_data, key):
-    old_key_data = {}
-    old_key_data.update(key.properties)
-    if old_key_data.get('_skeleton', False):
-        # This key was added as an endpoint for a signature with
-        # incomplete information. Let the merge tear it down and update it.
-        return True
-
-    for k in set(list(old_key_data.keys()) + list(key_data.keys())):
-        if k in IGNORED_KEYS:
-            continue
-        if old_key_data.get(k, None) != key_data.get(k, None):
-            return False
-
-    return True
+def keys_equivalent(key1, key2):
+    return (
+        key1.version == key2.version
+        and key1.public_key_algorithm == key2.public_key_algorithm
+        and key1.modulus_n == key2.modulus_n
+        and key1.exponent_e == key2.exponent_e
+        and key1.prime_p == key2.prime_p
+        and key1.group_generator_g == key2.group_generator_g
+        and key1.group_order_q == key2.group_order_q
+        and key1.key_value_y == key2.key_value_y
+        and key1.creation_time == key2.creation_time
+        )
 
 
 def merge_sigpairs(parts):
@@ -59,41 +51,30 @@ def merge_sigpairs(parts):
     #  is RECOMMENDED that priority be given to the most recent self-
     #  signature."
 
-    part_map = {}
     m = OrderedDict()
     for part in parts:
-        part_key_items = {}
-        part_key_items.update(part)
-        part_key_items.pop('signatures', None)
-        part_key_items.pop('_data', None)
-        part_key = repr(sorted([(k, v)
-                                for k, v in part_key_items.items()
-                                if k not in IGNORED_KEYS]))
-        part_map[part_key] = part
-        old_sigs = m.setdefault(part_key, [])
-        for sig in part.get('signatures', []):
+        old_sigs = m.setdefault(part, [])
+        for sig in part.signatures:
+            sig_key = signature_key(sig)
             for sig2 in old_sigs:
-                if not compare_data(sig, sig2):
+                sig_key2 = signature_key(sig2)
+                if sig_key != sig_key2:
                     old_sigs.append(sig)
 
-    result = []
-    for part_key, sigs in m.items():
-        part = part_map[part_key]
-        part['signatures'] = []
+    for part, sigs in m.items():
+        part.signatures = []
 
         # If there are multiple self-signatures, just add the newest one at
         # the head of the list. All other signatures are appended in order.
         # All self-signatures should already be validated by this point.
         selfsig = None
         for sig in sigs:
-            if sig['selfsig'] and selfsig:
-                if sig['creation_time'] > selfsig['creation_time']:
+            if sig.is_self_signature() and selfsig:
+                if sig.creation_time > selfsig.creation_time:
                     selfsig = sig
             else:
-                part['signatures'].append(sig)
-        part['signatures'].insert(0, selfsig)
-        result.append(part)
-    return result
+                part.signatures.append(sig)
+        part.signatures.insert(0, selfsig)
 
 
 def merge_sigpair_lists(part1, part2):
@@ -103,64 +84,66 @@ def merge_sigpair_lists(part1, part2):
 _marker = object()
 
 
-def compare_data(d1, d2):
-    for k in set(list(d1.keys()) + list(d2.keys())):
-        if k in IGNORED_KEYS:
-            continue
-        if d1.get(k, _marker) != d2.get(k, _marker):
-            return False
-    return True
+def signature_key(sig):
+    return (
+        sig.version,
+        sig.signature_type,
+        sig.public_key_algorithm,
+        sig.hash_algorithm,
+        sig.creation_time,
+        set(sig.issuer_key_ids),
+        )
 
 
-def merge(key_data, candidate_node):
-    if not key_data_equal(key_data, candidate_node):
-        return None, key_data
+def merge(key, candidate_key):
+    if not keys_equivalent(key, candidate_key):
+        return key
 
-    signature_nodes = utils.get_signatures(candidate_node)
-    old_sigs = []
-    for node in signature_nodes:
-        sig = {}
-        sig.update(node.properties)
+    signatures = candidate_key.signatures
+    old_sigs = OrderedDict()
+    for sig in signatures:
+        sig_key = signature_key(sig)
         for sig2 in old_sigs:
-            if compare_data(sig, sig2):
+            sig_key2 = signature_key(sig2)
+            if sig_key == sig_key2:
                 break
         else:
             # Only called if we never break
-            old_sigs.append(sig)
+            old_sigs[sig_key] = sig
 
-    old_user_ids = utils.get_user_ids(candidate_node)
-    old_user_attributes = utils.get_user_attributes(candidate_node)
-    old_subkeys = utils.get_subkeys(candidate_node)
+    old_user_ids = candidate_key.user_ids
+    old_user_attributes = candidate_key.user_attributes
+    old_subkeys = candidate_key.subkeys
 
-    for sig in old_sigs:
-        if sig not in key_data['signatures']:
-            key_data['signatures'].append(sig)
+    for sig in old_sigs.values():
+        # FIX
+        if sig not in key.signatures:
+            key.signatures.append(sig)
 
-    key_data['user_ids'] = merge_sigpair_lists(
-                                key_data.get('user_ids', []),
-                                list(map(node_to_dict, old_user_ids))
-                            )
-    key_data['user_attributes'] = merge_sigpair_lists(
-                                key_data.get('user_attributes', []),
-                                list(map(node_to_dict, old_user_attributes))
-                            )
-    key_data['subkeys'] = merge_sigpair_lists(
-                                key_data.get('subkeys', []),
-                                list(map(node_to_dict, old_subkeys))
-                            )
+    key.user_ids = merge_sigpair_lists(
+        key.user_ids,
+        old_user_ids
+        )
+    key.user_attributes = merge_sigpair_lists(
+        key.user_attributes,
+        old_user_attributes
+        )
+    key.subkeys = merge_sigpair_lists(
+        key.subkeys,
+        old_subkeys
+        )
 
-    return candidate_node, key_data
+    return key
 
 
-def key_to_merge_updates(key_data, db):
-    key_id = key_data['key_id']
-    if db.get_public_key_by_hash(key_data['key_hash']):
-        return None
+def merge_key(key, db):
+    key_id = key.key_id
+    if hasattr(db, 'get_key_by_hash'):
+        if db.get_key_by_hash(utils.hash_entire_key(key)):
+            return key
 
-    potential_merge = db.get_public_key_by_id(key_id[-8:])
-    if potential_merge:
-        target, key_data = merge(key_data, potential_merge)
-        if target:
-            key_data['_obj'] = target
+    potential_merges = list(db.search(key_id=key_id))
+    if potential_merges:
+        key = merge(key, potential_merges[0])
 
-    return key_data
+    return key
