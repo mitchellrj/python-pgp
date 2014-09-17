@@ -438,9 +438,6 @@ class BaseSecretKey(BasePublicKey):
             self.prime_p, self.group_generator_g, self.group_order_q,
             self.key_value_y, self.signatures)
         key.packet_header_type = self.packet_header_type
-        key.user_ids = self.user_ids
-        key.user_attributes = self.user_attributes
-        key.subkeys = map(lambda k: k.to_public_key(), self.subkeys)
         return key
 
     def _to_packet_args(self, header_format=None):
@@ -614,6 +611,15 @@ class SecretSubkey(PublicSubkey, BaseSecretKey):
     def __init__(self, primary_public_key, *args, **kwargs):
         self._primary_public_key_ref = weakref.ref(primary_public_key)
         BaseSecretKey.__init__(self, *args, **kwargs)
+
+    def to_public_key(self):
+        key = self._PublicClass(
+            self.primary_public_key, self.version, self.public_key_algorithm,
+            self.creation_time, self.expiration_time, self.modulus_n,
+            self.exponent_e, self.prime_p, self.group_generator_g,
+            self.group_order_q, self.key_value_y, self.signatures)
+        key.packet_header_type = self.packet_header_type
+        return key
 
 
 @implementer(interfaces.IUserID)
@@ -1017,3 +1023,10 @@ class TransferableSecretKey(BaseSecretKey, TransferablePublicKey):
         self.user_ids = []
         self.user_attributes = []
         self.subkeys = []
+
+    def to_public_key(self):
+        key = super(TransferableSecretKey, self).to_public_key()
+        key.user_ids = self.user_ids
+        key.user_attributes = self.user_attributes
+        key.subkeys = list(map(lambda k: k.to_public_key(), self.subkeys))
+        return key
