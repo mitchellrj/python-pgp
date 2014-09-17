@@ -324,7 +324,7 @@ def validate_signatures(target, db, strict=False):
                 # Shortcut for selfsig
                 signing_keys = [pk]
             else:
-                signing_keys = db.search(key_id=signing_key_id)
+                signing_keys = list(db.search(key_id=signing_key_id))
             if signing_keys:
                 signing_key = signing_keys[0]
                 try:
