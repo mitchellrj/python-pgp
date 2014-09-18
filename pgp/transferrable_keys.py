@@ -507,7 +507,13 @@ class BaseSecretKey(BasePublicKey):
         key_obj = self._get_key_obj()
 
         hash_ = utils.get_hash_instance(hash_algorithm)
-        hash_.update(item.to_signable_data(signature_type, version))
+        if isinstance(item, str):
+            hash_.update(item.encode('utf8'))
+        elif isinstance(item, bytes):
+            hash_.update(item)
+
+        else:
+            hash_.update(item.to_signable_data(signature_type, version))
         if isinstance(item, (BasePublicKey, UserID, UserAttribute)):
             SigClass = KeySignature
         else:
