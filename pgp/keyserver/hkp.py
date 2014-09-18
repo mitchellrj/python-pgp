@@ -1,7 +1,25 @@
+# python-pgp A Python OpenPGP implementation
+# Copyright (C) 2014 Richard Mitchell
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import datetime
 import time
 from urllib.parse import unquote
 from urllib.parse import urljoin
+from urllib.parse import urlparse
+from urllib.parse import urlunparse
 
 import requests
 
@@ -20,6 +38,14 @@ def _add_colons(line, number):
 
 
 class HKPUserIdResult(object):
+
+    def __repr__(self):
+        return '<{name} {uid} for {key_id} at 0x{pos:012x}>'.format(
+            name=self.__class__.__name__,
+            uid=repr(self.user_id),
+            key_id=self.result.key_id,
+            pos=id(self)
+            )
 
     def __init__(self, result, uid_line):
         self.result = result
@@ -40,6 +66,16 @@ class HKPUserIdResult(object):
 
 
 class HKPResult(object):
+
+    def __repr__(self):
+        return '<{name} {key_id} {uid} at 0x{pos:012x}>'.format(
+            name=self.__class__.__name__,
+            key_id=self.key_id,
+            uid=(
+                repr(self.user_ids[0].user_id)
+                if self.user_ids else '-No user ID-'
+                ),
+            pos=id(self))
 
     def __init__(self, server, pub_line, uid_lines):
         self.server = server
@@ -68,9 +104,19 @@ class HKPResult(object):
         return self.server.get(self.key_id)
 
 
-class HKPServer(object):
+class HKPKeyserverClient(object):
+
+    def __repr__(self):
+        return '<{name} {url} at 0x{pos:012x}>'.format(
+            name=self.__class__.__name__,
+            url=self.base_url,
+            pos=id(self))
 
     def __init__(self, base_url):
+        parts = urlparse(base_url)
+        base_url = urlunparse(
+            (('https' if parts.scheme.lower() == 'hkps' else 'http'),)
+            + parts[1:6])
         self.base_url = base_url
 
     @property
