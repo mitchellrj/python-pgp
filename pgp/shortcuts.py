@@ -96,7 +96,7 @@ def write_key_file(key, filename, armored=False):
         fh.write(data)
 
 
-def generate(public_key_algorithm, bits, hash_algorithm, user_id, password):
+def generate(public_key_algorithm, bits, hash_algorithm, user_id, passphrase):
     pass
 
 
