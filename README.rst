@@ -39,6 +39,12 @@ Other Python packages which provide related functionality:
 * `encryptedfile <https://pypi.python.org/pypi/encryptedfile>`_ - a
   pure python library for symmetrically encrypting files in an
   OpenPGP-compatible way.
+* `PGPy <https://pypi.python.org/pypi/PGPy>`_ - a pure python
+  library with basic parsing and signing of OpenPGP packets.
+* `OpenPGP-Python <https://github.com/singpolyma/OpenPGP-Python>`_ - a
+  pure python port of
+  `openpgp-php <https://github.com/bendiken/openpgp-php>`_. It can
+  parse OpenPGP packets and verify & create signatures.
 
 System requirements
 -------------------
