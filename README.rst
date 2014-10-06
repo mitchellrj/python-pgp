@@ -83,29 +83,74 @@ with Twofish & Camellia support::
 Usage
 -----
 
+High level
+==========
+
+Parsing a message
+`````````````````
+::
+
+    from pgp import read_message
+    message = read_message(data)
+
+Parsing a transferrable key
+```````````````````````````
+::
+
+    from pgp import read_key
+    key = read_key(data)
+
+Loading the GnuPG database
+``````````````````````````
+::
+
+    from pgp import get_gnupg_db
+    db = get_gnupg_db()
+    key = db.search(user_id='Joe')[0]
+
+Retrieving a key from a keyserver and creating a message for it
+```````````````````````````````````````````````````````````````
+::
+
+    >>> import datetime
+    >>> from pgp import *
+    >>> from pgp.keyserver import get_keyserver
+    >>> ks = get_keyserver('hkp://pgp.mit.edu/')
+    >>> results = ks.search('Joe Bloggs')
+    >>> recipient_key = results[0].get()
+    >>> message = message.TextMessage(
+    ...     u"This message was encrypted using Python PGP",
+    ...     datetime.datetime.now())
+    >>> my_secret_key = read_key_file('secret_key.gpg')
+    >>> my_secret_key.unlock('My passphrase')
+    >>> message = message.sign(my_secret_key)
+    >>> message = message.compress(2)  # Compression algorithm 2
+    >>> message = message.public_key_encrypt(9, recipient_key)
+    >>> message_packets = message.to_packets()
+    >>> message_data = b''.join(map(bytes, message_packets))
+    >>> armored_message = armor.ASCIIArmor(
+    ...     armor.PGP_MESSAGE, message_data)
+    >>> file_handle = open('message.asc', 'w')
+    >>> file_handle.write(str(armored_message))
+    >>> file_handle.close()
+
+Low level
+=========
+
 Parsing a packet stream
-=======================
+```````````````````````
 ::
     
     from pgp.packets import parsers
     parsers.parse_binary_packet_data(packet_data)
 
 Serializing a packet
-====================
+````````````````````
 ::
     
     from pgp.packets import parsers
     packets = parsers.parse_binary_packet_data(packet_data)
-    bytes(next(packets))
-
-Parsing a transferable public key
-=================================
-::
-    
-    from pgp import models
-    from pgp.packets import parsers
-    packets = list(parsers.parse_binary_packet_data(packet_data))
-    models.TransferablePublicKey.from_packets(packets)
+    b''.join(map(bytes, packets))
 
 Security
 --------
