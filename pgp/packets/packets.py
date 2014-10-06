@@ -149,7 +149,10 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
     @classmethod
     def _get_key_and_cipher_algo(cls, public_key_algorithm, secret_key_obj,
                                  encrypted_session_key):
-        cipher = PKCS1_v1_5.new(secret_key_obj)
+        if public_key_algorithm in (1, 2, 3):
+            cipher = PKCS1_v1_5.new(secret_key_obj)
+        else:
+            cipher = secret_key_obj
         sentinel = Random.new().read((secret_key_obj.size() + 1) // 8)
         encrypted_session_key_length = len(encrypted_session_key)
         decrypted_values = []
@@ -182,8 +185,12 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         return symmetric_algorithm, m[1:-2]
 
     @classmethod
-    def _get_encrypted_key(cls, key_obj, symmetric_algorithm, session_key):
-        cipher = PKCS1_v1_5.new(key_obj)
+    def _get_encrypted_key(cls, public_key_algorithm, key_obj,
+                           symmetric_algorithm, session_key):
+        if public_key_algorithm in (1, 2, 3):
+            cipher = PKCS1_v1_5.new(key_obj)
+        else:
+            cipher = key_obj
         encrypted_key = bytearray()
         session_key = bytearray(session_key)
         checksum = sum(session_key) % 65536
@@ -192,7 +199,13 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
             checksum >> 8,
             checksum & 0xff
             ]))
-        values = cipher.encrypt(session_key)
+        if public_key_algorithm in (1, 2, 3):
+            values = cipher.encrypt(session_key)
+        else:
+            k = Random.random.randint(1, cipher.p - 2)
+            values = cipher.encrypt(utils.bytes_to_int(session_key, 0,
+                                                       len(session_key)), k)
+            values = map(utils.int_to_bytes, values)
         if isinstance(values, bytes):
             values = (values,)
         for v in values:

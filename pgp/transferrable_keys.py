@@ -362,7 +362,7 @@ class BasePublicKey(SignedMixin):
                                        long(self.prime_p),
                                        long(self.group_order_q)
                                        ))
-        elif self.public_key_algorithm == 20:
+        elif self.public_key_algorithm in (16, 20):
             key_obj = key_constructor((long(self.prime_p),
                                        long(self.group_generator_g),
                                        long(self.key_value_y)
@@ -372,7 +372,7 @@ class BasePublicKey(SignedMixin):
                                        long(self.exponent_e)
                                        ))
         else:
-            raise UnsupportedPublicKeyAlgorithm(algorithm_type)
+            raise exceptions.UnsupportedPublicKeyAlgorithm(algorithm_type)
 
         return key_obj
 

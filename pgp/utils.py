@@ -187,21 +187,19 @@ def get_public_key_constructor(type_):
     elif type_ == 2:
         # rsa encrypt only
         # invalid for signing
-        raise PublicKeyAlgorithmCannotSign(2)
+        return RSA.construct
     elif type_ == 3:
         # rsa sign only
         return RSA.construct
     elif type_ == 16:
         # elgamel encrypt only
-        # invalid for signing
-        raise PublicKeyAlgorithmCannotSign(16)
+        return ElGamal.construct
     elif type_ == 17:
         # dsa
         return DSA.construct
     elif type_ == 18:
         # ec
-        # invalid for signing
-        raise PublicKeyAlgorithmCannotSign(18)
+        raise UnsupportedPublicKeyAlgorithm(18)
     elif type_ == 19:
         # ecdsa
         raise UnsupportedPublicKeyAlgorithm(19)

@@ -346,7 +346,7 @@ class PublicKeySessionKey(object):
         ko = public_key._get_key_obj()
         PktCls = packets.PublicKeyEncryptedSessionKeyPacket
         self.encrypted_key = PktCls._get_encrypted_key(
-            ko, sym_algorithm, session_key
+            public_key.public_key_algorithm, ko, sym_algorithm, session_key
             )
 
 
