@@ -430,7 +430,8 @@ def packet_type_from_first_byte(byte_):
     return (byte_ & 0x3f) >> 2
 
 
-def hash_user_data(data_to_hash, target_type, target_packet_data, signature_version):
+def hash_user_data(data_to_hash, target_type, target_packet_data,
+                   signature_version):
     """Adds user attribute & user id packets to a hash for signature
     comparison.
     """
@@ -486,8 +487,8 @@ def hash_packet_for_signature(packet_for_hash,
                             constants.CERTIFICATION_REVOCATION_SIGNATURE):
         assert public_key_packet_data is not None
         hash_key(data_to_hash, public_key_packet_data)
-        hash_user_data(data_to_hash, packet_for_hash.type, packet_data_for_hash,
-                       signature_version)
+        hash_user_data(data_to_hash, packet_for_hash.type,
+                       packet_data_for_hash, signature_version)
     elif signature_type == constants.TIMESTAMP_SIGNATURE:
         # Timestamp signatures are poorly defined and semi-deprecated.
         #

@@ -41,7 +41,8 @@ class UserAttributeSubpacket(object):
         data = self.content
         result = bytearray()
         # +1 for sub type
-        result.extend(utils.new_packet_length_to_bytes(len(data) + 1, False)[0])
+        result.extend(utils.new_packet_length_to_bytes(
+            len(data) + 1, False)[0])
         result.append(self.sub_type)
         result.extend(data)
         return bytes(result)

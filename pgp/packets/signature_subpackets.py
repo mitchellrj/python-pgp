@@ -451,7 +451,8 @@ class KeyFlagsSubpacket(SignatureSubpacket):
                  may_encrypt_comms=True, may_encrypt_storage=True,
                  may_be_used_for_auth=True, may_have_been_split=True,
                  may_have_multiple_owners=True):
-        SignatureSubpacket.__init__(self, constants.KEY_FLAGS_SUBPACKET_TYPE, critical)
+        SignatureSubpacket.__init__(self, constants.KEY_FLAGS_SUBPACKET_TYPE,
+                                    critical)
         self.may_certify_others = may_certify_others
         self.may_sign_data = may_sign_data
         self.may_encrypt_comms = may_encrypt_comms

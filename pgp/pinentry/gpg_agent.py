@@ -61,8 +61,8 @@ class GPGAgentPinentry(object):
         return lines
 
     def get_passphrase(self, prompt=None, error_message=None,
-                       description=None, cache_id=None, use_cache=True, no_ask=False,
-                       qualitybar=False, repeat=0):
+                       description=None, cache_id=None, use_cache=True,
+                       no_ask=False, qualitybar=False, repeat=0):
         self.connect()
         params = '--data'
         if no_ask:

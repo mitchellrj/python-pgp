@@ -292,14 +292,15 @@ def validate_signature(target, signature, signing_key, public_key=None,
                 signing_key.key_id not in signature.target.issuer_key_ids
                 and signing_key.key_id not in revocation_keys
                 ):
-            raise SignatureVerificationFailed('Signature cannot be revoked by this key')
+            raise SignatureVerificationFailed(
+                'Signature cannot be revoked by this key')
         elif signature.target.revocable is False:
             raise SignatureVerificationFailed('Signature cannot be revoked')
         elif signature.target.creation_time > signature.creation_time:
             raise SignatureCreatedBeforeContent()
         # TODO: FIX THIS
-        #result = check_signature(signing_key, signature, hash_,
-        #                         strict)
+        # result = check_signature(signing_key, signature, hash_,
+        #                          strict)
     else:
         # 0x00, 0x01, 0x02, 0x30, 0x40 & 0x50 do not apply to public keys
         raise UnexpectedSignatureType(sig_type)
@@ -329,7 +330,8 @@ def validate_signatures(target, db, strict=False):
                 signing_key = signing_keys[0]
                 try:
                     key_expired, key_revoked = \
-                        validate_signature(target, sig, signing_key, pk, strict)
+                        validate_signature(target, sig, signing_key, pk,
+                                           strict)
                 except InvalidSignature:
                     sig.validated = False
                     break

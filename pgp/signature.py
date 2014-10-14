@@ -192,7 +192,8 @@ class BaseSignature(object):
         else:
             result.append(self.public_key_algorithm)
             result.append(self.hash_algorithm)
-            hashed_subpacket_data = b''.join(map(bytes, self.hashed_subpackets))
+            hashed_subpacket_data = b''.join(
+                map(bytes, self.hashed_subpackets))
             hashed_subpacket_length = len(hashed_subpacket_data)
             result.extend(utils.int_to_2byte(hashed_subpacket_length))
             result.extend(hashed_subpacket_data)
@@ -501,7 +502,8 @@ class BaseSignature(object):
             C.TRUST_SUBPACKET_TYPE,
             'trust_amount', value)
 
-    revocation_reason = property(_get_revocation_reason, _set_revocation_reason)
+    revocation_reason = property(_get_revocation_reason,
+                                 _set_revocation_reason)
 
     def _get_revocation_code(self):
         return self._get_subpacket_values(

@@ -154,11 +154,18 @@ class ASCIIArmor(object):
 
         actual_checksum = crc24(data)
         if actual_checksum != expected_checksum:
-            raise ValueError('Checksum does not match. {0} (actual) != {1} (expected).'.format(repr(actual_checksum), repr(expected_checksum)))
+            raise ValueError((
+                'Checksum does not match. {0} (actual) != {1} (expected).'
+                ).format(
+                    repr(actual_checksum),
+                    repr(expected_checksum)
+                ))
 
         tail_line = lines[line_no]
         if tail_line != header_line.replace('BEGIN', 'END'):
-            raise ValueError('Tail line does not match header line. {0} {1}'.format(repr(header_line), repr(tail_line)))
+            raise ValueError(
+                'Tail line does not match header line. {0} {1}'.format(
+                repr(header_line), repr(tail_line)))
 
         return cls(data_type, data, part, total_parts, version, comment,
                    message_id, hash_algorithms, charset)
@@ -210,16 +217,20 @@ class ASCIIArmor(object):
                         data_type=data_types[self.data_type],
                     ))
         if self.version is not None:
-            result_lines.append('Version: {version}'.format(version=self.version))
+            result_lines.append('Version: {version}'.format(
+                version=self.version))
         if self.comment is not None:
-            result_lines.append('Comment: {comment}'.format(comment=self.comment))
+            result_lines.append('Comment: {comment}'.format(
+                comment=self.comment))
         if self.message_id is not None:
             result_lines.append(
-                    'MessageID: {message_id}'.format(message_id=self.message_id))
+                'MessageID: {message_id}'.format(message_id=self.message_id))
         if self.hash_algorithms is not None:
-            result_lines.append('Hash: {hash}'.format(hash=self.hash_algorithms))
+            result_lines.append(
+                'Hash: {hash}'.format(hash=self.hash_algorithms))
         if self.charset is not None:
-            result_lines.append('Charset: {charset}'.format(charset=self.charset))
+            result_lines.append(
+                'Charset: {charset}'.format(charset=self.charset))
         if self.extra_headers is not None:
             for k, v in self.extra_headers:
                 result_lines.append('{0}: {1}'.format(k, v))

@@ -27,7 +27,6 @@ from pgp import armor
 from pgp.shortcuts import read_key
 
 
-
 def _add_colons(line, number):
     # "Colons for empty fields on the end of each line may be left off, if
     #  desired."

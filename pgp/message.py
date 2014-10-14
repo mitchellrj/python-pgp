@@ -369,6 +369,8 @@ class DefaultSessionKey(object):
 
 
 EncryptedSessionKey.register(DefaultSessionKey)
+SymEncAndIPDPacket = \
+    packets.SymmetricallyEncryptedAndIntegrityProtectedDataPacket
 
 
 class SymmetricallyEncryptedMessageData(object):
@@ -450,7 +452,8 @@ class SymmetricallyEncryptedMessageData(object):
             # "Unlike the Symmetrically Encrypted Data Packet, no special CFB
             #  resynchronization is done after encrypting this prefix data."
             offset += block_len
-            first_block = cipher.decrypt(encrypted_data[offset:offset + block_len])
+            first_block = cipher.decrypt(
+                encrypted_data[offset:offset + block_len])
             offset += block_len
             iv_check = first_block[:2]
             if iv_check != decrypted_iv[-2:]:
@@ -491,14 +494,19 @@ class SymmetricallyEncryptedMessageData(object):
             decrypted_packets.append(packet)
 
         if self.integrity_protected:
-            if decrypted_packets[-1].type != C.MODIFICATION_DETECTION_CODE_PACKET_TYPE:
-                raise ValueError('Integrity protected message is missing modification detection code.')
+            if (decrypted_packets[-1].type !=
+                    C.MODIFICATION_DETECTION_CODE_PACKET_TYPE):
+                raise ValueError(
+                    'Integrity protected message is missing modification '
+                    'detection code.')
             mdc = decrypted_packets.pop()
             hash_ = SHA.new(decrypted_iv)
             hash_.update(decrypted_iv[-2:])
             hash_.update(decrypted_data[:-20])
             if mdc.data != hash_.digest():
-                raise ValueError('Integrity protected message does not match modification detection code.')
+                raise ValueError(
+                    'Integrity protected message does not match modification '
+                    'detection code.')
 
         return open_pgp_message_from_packets(decrypted_packets)
 
@@ -506,7 +514,7 @@ class SymmetricallyEncryptedMessageData(object):
         if header_format is None:
             header_format = self.packet_header_type
         if self.integrity_protected:
-            return packets.SymmetricallyEncryptedAndIntegrityProtectedDataPacket(
+            return SymEncAndIPDPacket(
                 header_format,
                 self.version,
                 self.data
@@ -579,10 +587,12 @@ class EncryptedMessageWrapper(BaseMessage):
                     continue
             elif isinstance(sess_key_obj, SymmetricSessionKey):
                 sym_algo, sess_key = \
-                    sess_key_obj.get_algorithm_and_session_key(secret_key_or_passphrase)
+                    sess_key_obj.get_algorithm_and_session_key(
+                        secret_key_or_passphrase)
             elif isinstance(sess_key_obj, DefaultSessionKey):
                 sym_algo, sess_key = \
-                    sess_key_obj.get_algorithm_and_session_key(secret_key_or_passphrase)
+                    sess_key_obj.get_algorithm_and_session_key(
+                        secret_key_or_passphrase)
             else:
                 # TODO: consider raising an error
                 continue

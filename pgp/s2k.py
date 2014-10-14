@@ -34,7 +34,10 @@ class SimpleS2K(object):
             )
 
     def __bytes__(self):
-        return bytes(bytearray([self.mode, self.hash_algorithm]) + bytearray(self.salt))
+        return bytes(
+            bytearray([self.mode, self.hash_algorithm]) +
+            bytearray(self.salt)
+            )
 
     def to_key(self, passphrase):
         required_length = utils.symmetric_cipher_key_lengths.get(
@@ -89,7 +92,8 @@ class SaltedS2K(SimpleS2K):
         offset += 8
         return cls(hash_algorithm, symmetric_algorithm, salt), offset
 
-    def __init__(self, hash_algorithm, symmetric_algorithm, salt, *args, **kwargs):
+    def __init__(self, hash_algorithm, symmetric_algorithm, salt, *args,
+                 **kwargs):
         SimpleS2K.__init__(self, hash_algorithm, symmetric_algorithm)
         self.salt = salt
 

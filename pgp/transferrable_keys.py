@@ -91,16 +91,22 @@ class SignedMixin(object):
     def revoked(self):
         return bool(self.revocation_signatures)
 
-
     def get_most_recent_selfsig(self, revocation=False):
         last_signature_created = datetime.datetime(1900, 1, 1)
         most_recent_selfsig = None
         for signature in self.signatures:
             if not signature.is_self_signature():
                 continue
-            if not revocation and signature.signature_type not in self._self_sig_types:
+            if (
+                    not revocation
+                    and signature.signature_type not in self._self_sig_types
+                    ):
                 continue
-            if revocation and signature.signature_type not in self._revocation_sig_types:
+            if (
+                    revocation
+                    and signature.signature_type not in
+                    self._revocation_sig_types
+                    ):
                 continue
             if last_signature_created < signature.creation_time:
                 most_recent_selfsig = signature
@@ -125,7 +131,8 @@ class SignedMixin(object):
 
     __selfsig_attribute = __selfsig_attribute.__func__
 
-    revocation_reason = __selfsig_attribute('revocation_reason', revocation=True)
+    revocation_reason = __selfsig_attribute('revocation_reason',
+                                            revocation=True)
     revocation_code = __selfsig_attribute('revocation_code', revocation=True)
     # Overridden in keys
     creation_time = __selfsig_attribute('creation_time')
@@ -354,7 +361,8 @@ class BasePublicKey(SignedMixin):
         return SHA.new(sexp.encode('us-ascii')).hexdigest().upper()
 
     def _get_key_obj(self):
-        key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+        key_constructor = utils.get_public_key_constructor(
+            self.public_key_algorithm)
 
         if self.public_key_algorithm == 17:
             key_obj = key_constructor((long(self.key_value_y),
@@ -378,10 +386,12 @@ class BasePublicKey(SignedMixin):
 
     def verify(self, signature, item):
         if self.key_id not in signature.issuer_key_ids:
-            raise exceptions.SignatureVerificationFailed('Signature not made by this key.')
+            raise exceptions.SignatureVerificationFailed(
+                'Signature not made by this key.')
 
         if self.public_key_algorithm != signature.public_key_algorithm:
-            raise exceptions.SignatureVerificationFailed('Signature not made by this key.')
+            raise exceptions.SignatureVerificationFailed(
+                'Signature not made by this key.')
 
         signature_values = signature.signature_values
 
@@ -465,7 +475,8 @@ class BaseSecretKey(BasePublicKey):
         return args
 
     def _get_key_obj(self):
-        key_constructor = utils.get_public_key_constructor(self.public_key_algorithm)
+        key_constructor = utils.get_public_key_constructor(
+            self.public_key_algorithm)
         if self.is_locked():
             return super(BaseSecretKey, self)._get_key_obj()
 
@@ -497,7 +508,8 @@ class BaseSecretKey(BasePublicKey):
 
     def decrypt(self, message):
         if self.is_locked():
-            raise RuntimeError('Secret key must be unlocked before decrypting.')
+            raise RuntimeError(
+                'Secret key must be unlocked before decrypting.')
 
     def sign(self, item, version, signature_type, hash_algorithm,
              hashed_subpackets=None):
@@ -528,8 +540,9 @@ class BaseSecretKey(BasePublicKey):
             creation_time_arg = creation_time
             issuer_key_id_arg = issuer_key_id
         elif version == 4:
-            creation_time_subpacket = signature_subpackets.CreationTimeSubpacket(
-                False, creation_time)
+            creation_time_subpacket = \
+                signature_subpackets.CreationTimeSubpacket(False,
+                                                           creation_time)
             issuer_subpacket = signature_subpackets.IssuerSubpacket(
                 False, issuer_key_id)
             hashed_subpackets.insert(0, creation_time_subpacket)
@@ -618,8 +631,9 @@ class PublicSubkey(BasePublicKey):
     def to_signable_data(self, signature_type, signature_version=3):
         result = self.primary_public_key.to_signable_data(signature_type,
                                                           signature_version)
-        result.extend(super(PublicSubkey, self).to_signable_data(signature_type,
-                                                                 signature_version))
+        result.extend(
+            super(PublicSubkey, self).to_signable_data(signature_type,
+                                                       signature_version))
         return result
 
     @property
@@ -848,8 +862,11 @@ def validate_transferrable_key(packets, secret=False):
                         "Public Key Packet must be first in the list")
         elif this == C.SIGNATURE_PACKET_TYPE:
             sig_type = packets[i].signature_type
-            previous_non_sig = [x for x in type_order[j::-1] if x not in (
-                                C.SIGNATURE_PACKET_TYPE, C.TRUST_PACKET_TYPE)][0]
+            previous_non_sig = [
+                x for x in type_order[j::-1]
+                if x not in (
+                    C.SIGNATURE_PACKET_TYPE, C.TRUST_PACKET_TYPE
+                )][0]
             if sig_type == C.SIGNATURE_DIRECTLY_ON_A_KEY:
                 for t in type_order[:i]:
                     if t not in (key_packet_type,
@@ -860,13 +877,19 @@ def validate_transferrable_key(packets, secret=False):
                                     "Packet")
             elif sig_type == C.SUBKEY_BINDING_SIGNATURE:
                 if previous_non_sig != subkey_packet_type:
-                    raise exceptions.InvalidKeyPacketOrder(
-                                "Subkey Binding Signature may only appear "
-                                "immediately after a Subkey Packet, not {0}".format(previous))
-                if previous == C.SIGNATURE_PACKET_TYPE and packets[j].signature_type != C.SUBKEY_BINDING_SIGNATURE:
-                    raise exceptions.InvalidKeyPacketOrder(
-                                "Subkey Binding Signature may only appear "
-                                "immediately after a Subkey Packet, not {0}".format(previous))
+                    raise exceptions.InvalidKeyPacketOrder((
+                        "Subkey Binding Signature may only appear "
+                        "immediately after a Subkey Packet, not {0}"
+                        ).format(previous))
+                if (
+                        previous == C.SIGNATURE_PACKET_TYPE
+                        and packets[j].signature_type !=
+                            C.SUBKEY_BINDING_SIGNATURE
+                        ):
+                    raise exceptions.InvalidKeyPacketOrder((
+                        "Subkey Binding Signature may only appear "
+                        "immediately after a Subkey Packet, not {0}"
+                        ).format(previous))
             elif sig_type == C.KEY_REVOCATION_SIGNATURE:
                 for t in type_order[:i]:
                     if t not in (key_packet_type,
@@ -879,7 +902,8 @@ def validate_transferrable_key(packets, secret=False):
                                     "Key")
             elif sig_type == C.SUBKEY_REVOCATION_SIGNATURE:
                 if (previous != C.SIGNATURE_PACKET_TYPE
-                        or packets[j].signature_type != C.SUBKEY_REVOCATION_SIGNATURE):
+                        or packets[j].signature_type !=
+                        C.SUBKEY_REVOCATION_SIGNATURE):
                     raise exceptions.InvalidKeyPacketOrder(
                                 "Subkey Revocation Signature may only appear "
                                 "after a Subkey Binding Signature")
@@ -889,9 +913,10 @@ def validate_transferrable_key(packets, secret=False):
                 if previous_non_sig not in (C.USER_ID_PACKET_TYPE,
                                             C.USER_ATTRIBUTE_PACKET_TYPE,
                                             C.TRUST_PACKET_TYPE):
-                    raise exceptions.InvalidKeyPacketOrder(
+                    raise exceptions.InvalidKeyPacketOrder((
                                 "Certifications must apply to user IDs or "
-                                "user attributes, not {0}".format(previous_non_sig))
+                                "user attributes, not {0}"
+                                ).format(previous_non_sig))
             else:
                 raise exceptions.InvalidKeyPacketType(
                             "Invalid signature type for transferrable "
@@ -906,17 +931,20 @@ def validate_transferrable_key(packets, secret=False):
         elif this == C.USER_ATTRIBUTE_PACKET_TYPE:
             for t in type_order[:i]:
                 if t not in (key_packet_type, C.SIGNATURE_PACKET_TYPE,
-                             C.USER_ID_PACKET_TYPE, C.USER_ATTRIBUTE_PACKET_TYPE,
+                             C.USER_ID_PACKET_TYPE,
+                             C.USER_ATTRIBUTE_PACKET_TYPE,
                              C.TRUST_PACKET_TYPE):
                     raise exceptions.InvalidKeyPacketOrder(
                                 "User attributes must appear before all "
                                 "subkeys")
-        elif this in (C.PUBLIC_SUBKEY_PACKET_TYPE, C.SECRET_SUBKEY_PACKET_TYPE):
+        elif this in (C.PUBLIC_SUBKEY_PACKET_TYPE,
+                      C.SECRET_SUBKEY_PACKET_TYPE):
             if pubkey_version < 4:
                 raise exceptions.InvalidKeyPacketType(
                             "V3 keys may not contain subkeys")
             if (type_order[i + 1] != C.SIGNATURE_PACKET_TYPE
-                or packets[i + 1].signature_type != C.SUBKEY_BINDING_SIGNATURE):
+                    or packets[i + 1].signature_type !=
+                        C.SUBKEY_BINDING_SIGNATURE):
 
                 raise exceptions.InvalidKeyPacketOrder(
                             "Subkeys must be followed by a binding signature")

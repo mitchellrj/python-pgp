@@ -60,6 +60,7 @@ DEFAULT_RESOURCES = (
 
 _locks = []
 
+
 @atexit.register
 def _clean_up_locks():
     for l in _locks:
@@ -210,7 +211,7 @@ class GDBM(BaseResource):
         try:
             with gdbm.open(self.filename, 'r') as db:
                 key = db.firstkey()
-                while key != None:
+                while key is not None:
                     yield key
                     key = db.nextkey(key)
         finally:
@@ -227,7 +228,11 @@ class GDBM(BaseResource):
     def get_transferrable_key(self, fingerprint):
         if len(fingerprint) != 40:
             # Actually a key ID - find the fingerprint first.
-            fingerprint = ([k for k in self.keys() if k.endswith(fingerprint)] + [None])[0]
+            fingerprint = ([
+                k for k in self.keys()
+                if k.endswith(fingerprint)
+                ] + [None]
+                )[0]
 
         if fingerprint is None:
             return None
@@ -255,7 +260,8 @@ class GDBM(BaseResource):
                 if key.fingerprint in db:
                     raise KeyError(key.fingerprint)
                 db[key.fingerprint] = \
-                    b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
+                    b''.join(map(bytes, key.to_packets(
+                        self._preferred_header_format)))
         finally:
             self.unlock_db()
 
@@ -270,7 +276,8 @@ class GDBM(BaseResource):
                 if key.fingerprint not in db:
                     raise KeyError(key.fingerprint)
                 db[key.fingerprint] = \
-                    b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
+                    b''.join(map(bytes, key.to_packets(
+                        self._preferred_header_format)))
         finally:
             self.unlock_db()
 
@@ -294,7 +301,8 @@ class Keyring(BaseResource):
     _offset_table = None
 
     def __init__(self, filename, force, secret, read_only, default):
-        super(Keyring, self).__init__(filename, force, secret, read_only, default)
+        super(Keyring, self).__init__(filename, force, secret, read_only,
+                                      default)
         self._preferred_header_format = None
         self._update_offset_table()
 
@@ -379,7 +387,8 @@ class Keyring(BaseResource):
             with open(self.filename, 'rb') as fh:
                 data = fh.read()
 
-            data += b''.join(map(bytes, key.to_packets(self._preferred_header_format)))
+            data += b''.join(map(bytes, key.to_packets(
+                self._preferred_header_format)))
             with open(self.filename, 'wb') as fh:
                 fh.write(data)
             self._update_offset_table()

@@ -110,12 +110,12 @@ options.add_argument(
     help='Reset --default-recipient and --default-recipient-self.'
     )
 options.add_argument(
-    '--verbose, -v', action='store_count', dest='verbosity',
+    '--verbose, -v', action='count', dest='verbosity',
     help='Give more information during processing. If used twice, the input '
     'data is listed in detail.'
     )
 options.add_argument(
-    '--no-verbose', action='store_const', dest='verbosity',
+    '--no-verbose', action='store_const', dest='verbosity', const=0,
     help='Reset verbosity level to 0.'
     )
 options.add_argument(

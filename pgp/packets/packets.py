@@ -90,7 +90,7 @@ class Packet(object):
                             data_length,
                             allow_partial)
                 result.extend(packet_length_bytes)
-                result.extend(data[offset:data_length-remaining])
+                result.extend(data[offset:data_length - remaining])
                 offset = data_length - remaining
 
         else:
@@ -209,7 +209,8 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
         if isinstance(values, bytes):
             values = (values,)
         for v in values:
-            encrypted_key.extend(utils.int_to_mpi(utils.bytes_to_int(v, 0, len(v))))
+            encrypted_key.extend(utils.int_to_mpi(
+                utils.bytes_to_int(v, 0, len(v))))
 
         return encrypted_key
 
@@ -323,14 +324,15 @@ class SignaturePacket(Packet):
 
         result = cls(header_format, version, signature_type,
                      public_key_algorithm, hash_algorithm, hash2,
-                     signature_values, creation_time, key_id, hashed_subpackets,
-                     unhashed_subpackets)
+                     signature_values, creation_time, key_id,
+                     hashed_subpackets, unhashed_subpackets)
         result._content = data
         return result
 
     @property
     def human_signature_type(self):
-        return constants.human_signature_types.get(self.signature_type, 'Unknown')
+        return constants.human_signature_types.get(self.signature_type,
+                                                   'Unknown')
 
     def __repr__(self):
         return '<{0} 0x{1:02x} ({2}) at 0x{3:x}>'.format(
@@ -524,7 +526,8 @@ class SymmetricKeyEncryptedSessionKeyPacket(Packet):
             encrypted_data = bytearray(encrypted_session_key)
             padding = block_size - (len(encrypted_data) % block_size)
             encrypted_data.extend([0] * padding)
-            decrypted_data = bytearray(cipher.decrypt(bytes(encrypted_data))[:-padding])
+            decrypted_data = bytearray(
+                cipher.decrypt(bytes(encrypted_data))[:-padding])
             symmetric_algorithm = decrypted_data[0]
             key = bytes(decrypted_data[1:])
 
@@ -651,7 +654,9 @@ class PublicKeyPacket(Packet):
             group_generator, offset = utils.mpi_to_int(data, offset)
             key_value, offset = utils.mpi_to_int(data, offset)
         else:
-            raise NotImplementedError('Unknown public key algorithm {0}'.format(public_key_algorithm))
+            raise NotImplementedError((
+                'Unknown public key algorithm {0}'
+                ).format(public_key_algorithm))
 
         return offset, (
                 version, creation_time, public_key_algorithm, expiration_days,
@@ -668,8 +673,8 @@ class PublicKeyPacket(Packet):
 
     def __init__(self, header_type, version, creation_time,
                  public_key_algorithm, expiration_days=None, modulus=None,
-                 exponent=None, prime=None, group_order=None, group_generator=None,
-                 key_value=None):
+                 exponent=None, prime=None, group_order=None,
+                 group_generator=None, key_value=None):
         Packet.__init__(self, header_type, constants.PUBLIC_KEY_PACKET_TYPE)
         self.version = version
         self.creation_time = creation_time
@@ -927,7 +932,8 @@ class SecretKeyPacket(PublicKeyPacket):
         if version >= 4:
             cipher = utils.get_symmetric_cipher(
                         symmetric_algorithm, key, utils.CFB, iv)
-            padding = bytearray([0x00] * (len(encrypted_data) % sym_block_size))
+            padding = bytearray(
+                [0x00] * (len(encrypted_data) % sym_block_size))
             decrypted_data = cipher.decrypt(
                 bytes(encrypted_data + padding)
                 )[:-len(padding)]
@@ -1414,7 +1420,7 @@ class SymmetricallyEncryptedAndIntegrityProtectedDataPacket(Packet):
 
     def __eq__(self, other):
         return (
-            super(SymmetricallyEncryptedAndIntegrityProtectedDataPacket, self).__eq__(other)
+            super(self.__class__, self).__eq__(other)
             and self.version == other.version
             and self.encrypted_data == encrypted_data
             )

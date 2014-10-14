@@ -24,8 +24,9 @@ class GetPassPinentry(object):
         self._cache = {}
 
     def get_passphrase(self, prompt=None, error_message=None,
-                       description=None, cache_id=None, use_cache=True, no_ask=False,
-                       qualitybar=False, repeat=0, stream=sys.stdout):
+                       description=None, cache_id=None, use_cache=True,
+                       no_ask=False, qualitybar=False, repeat=0,
+                       stream=sys.stdout):
         if prompt in (None, 'X'):
             # Default prompt
             prompt = 'PIN?'
