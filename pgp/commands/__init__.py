@@ -6,6 +6,19 @@ import sys
 VERSION = 'x.x.x'
 
 
+class Compliance:
+
+    GnuPG = 1
+    OpenPGP = 2
+    RFC4880 = 3
+    RFC2440 = 4
+    RFC1991 = 5
+    PGP2 = 6
+    PGP6 = 7
+    PGP7 = 8
+    PGP8 = 9
+
+
 class Commands:
 
     Sign = 1
@@ -69,6 +82,18 @@ _export_secret_help = (
     'See the option --simple-sk-checksum if you want to import such an '
     'exported key with an older OpenPGP implementation.'
     )
+
+
+class TextmodeAction(argparse.Action):
+
+    def __init__(self, *args, **kwargs):
+        self.tdest = kwargs.pop('tdest', kwargs['dest'])
+        super(TextmodeAction, self).__init__(*args, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, self.const)
+        if option_string == '-t':
+            setattr(namespace, self.tdest, self.const)
 
 
 argparser = argparse.ArgumentParser(
@@ -435,7 +460,587 @@ options.add_argument(
     'list.\n\nNote that depending on the SSL library that the keyserver '
     'helper is built with, this may actually be a directory or a file.'
     )
+options.add_argument(
+    '--completes-needed', metavar='n', type=int, default=1,
+    dest='completes_needed',
+    help='Number of completely trusted users to introduce a new key signer '
+    '(defaults to 1).'
+    )
+options.add_argument(
+    '--marginals-needed', metavar='n', type=int, default=3,
+    dest='marginals_needed',
+    help='Number of marginally trusted users to introduce a new key signer '
+    '(defaults to 3)'
+    )
+options.add_argument(
+    '--max-cert-depth', metavar='n', type=int, default=5,
+    dest='max_cert_depth',
+    help='Maximum depth of a certification chain (default is 5).'
+    )
+options.add_argument(
+    '--simple-sk-checksum', action='store_true', default=False,
+    dest='simple_sk_checksum',
+    help='Secret keys are integrity protected by using a SHA-1 checksum. '
+    'This method is part of the OpenPGP specification. Old applications '
+    'don\'t understand this new format, so this option may be used to switch '
+    'back to the old behaviour. Using this option bears a security risk. '
+    'Note that using this option only takes effect when the secret key is '
+    'encrypted - the simplest way to make this happen is to change the '
+    'passphrase on the key (even changing it to the same value is '
+    'acceptable).'
+    )
+options.add_argument(
+    '--no-sig-cache', action='store_true', default=False, dest='no_sig_cache',
+    help='Do not cache the verification status of key signatures. Caching '
+    'gives a much better performance in key listings. However, if you '
+    'suspect that your public keyring is not save against write '
+    'modifications, you can use this option to disable the caching. It '
+    'probably does not make sense to disable it because all kind of damage '
+    'can be done if someone else has write access to your public keyring.'
+    )
+options.add_argument(
+    '--no-sig-create-check', action='store_true', default=False,
+    dest='no_sig_create_check',
+    help='%(prog)s normally verifies each signature right after creation to '
+    'protect against bugs and hardware malfunctions which could leak out '
+    'bits from the secret key. This extra verification needs some time '
+    '(about 115% for DSA keys), and so this option can be used to disable '
+    'it. However, due to the fact that the signature creation needs manual '
+    'interaction, this performance penalty does not matter in most settings.'
+    )
+options.add_argument(
+    '--auto-check-trustdb', action='store_true', default=True,
+    dest='auto_check_trustdb',
+    help='If %(prog)s feels that its information about the Web of Trust has '
+    'to be updated, it automatically  runs  the  --check-trustdb command '
+    'internally.'
+    )
+options.add_argument(
+    '--no-auto-check-trustdb', action='store_false', default=True,
+    dest='auto_check_trustdb',
+    help='If %(prog)s feels that its information about the Web of Trust has '
+    'to be updated, it automatically  runs  the  --check-trustdb command '
+    'internally. --no-auto-check-trustdb disables this option.'
+    )
+options.add_argument(
+    '--use-agent', action='store_true', default=True,
+    dest='use_agent',
+    help='Try to use the GnuPG-Agent. With this option, %(prog)s first tries '
+    'to connect to the agent before it asks for a passphrase.'
+    )
+options.add_argument(
+    '--no-use-agent', action='store_false', default=True,
+    dest='use_agent',
+    help='Try to use the GnuPG-Agent. With this option, %(prog)s first tries '
+    'to connect to the agent before it asks for a passphrase. '
+    '--no-use-agent disables this option.'
+    )
+# options.add_argument(
+#     '--gpg-agent-info'
+#     )
+options.add_argument(
+    '--lock-once', action='store_const', const=1, default=2,
+    dest='lock_count',
+    help='Lock the databases the first time a lock is requested and do not '
+    'release the lock until the process terminates.'
+    )
+options.add_argument(
+    '--lock-multiple', action='store_const', const=2, default=2,
+    dest='lock_count',
+    help='Release the locks every time a lock is no longer needed. Use this '
+    'to override a previous --lock-once from a config file.'
+    )
+options.add_argument(
+    '--lock-never', action='store_const', const=0, default=2,
+    dest='lock_count',
+    help='Disable locking entirely. This option should be used only in very '
+    'special environments, where it can be assured that only one process is '
+    'accessing those files. A bootable floppy with a stand-alone encryption '
+    'system will probably use this. Improper usage of this option may lead '
+    'to data and key corruption.'
+    )
+options.add_argument(
+    '--exit-on-status-write-error', action='store_true', default=False,
+    dest='exit_on_status_write_error',
+    help='This option will cause write errors on the status FD to '
+    'immediately terminate the process. That should in fact be the default '
+    'but it never worked this way and thus we need an option to enable this, '
+    'so that the change won\'t break applications which close their end of a '
+    'status FD connected pipe too early. Using this option along with '
+    '--enable-progress-filter may be used to cleanly cancel long running '
+    '%(prog)s operations.'
+    )
+# options.add_argument(
+#     '--limit-card-insert-tries'
+#     )
+# options.add_argument(
+#     '--no-random-seed-file'
+#     )
+options.add_argument(
+    '--no-greeting', action='store_true', default=False, dest='no_greeting',
+    help='Suppress the initial copyright message.'
+    )
+# options.add_argument(
+#     '--no-secmem-warning'
+#     )
+options.add_argument(
+    '--no-permission-warning', action='store_true', default=False,
+    dest='no_permission_warning',
+    help='Suppress the warning about unsafe file and home directory '
+    '(--homedir) permissions. Note that the permission checks that %(prog)s '
+    'performs are not intended to be authoritative, but rather they simply '
+    'warn about certain common permission problems. Do not assume that the '
+    'lack of a warning means that your system is secure.\n\n'
+    'Note that the warning for unsafe --homedir permissions cannot be '
+    'suppressed in the configuration file, as this would allow an attacker '
+    'to place an unsafe configuration file in place, and use this file to '
+    'suppress warnings about itself. The --homedir permissions warning may '
+    'only be suppressed on the command line.'
+    )
+options.add_argument(
+    '--no-mdc-warning', action='store_true', default=False,
+    dest='no_mdc_warning',
+    help='Suppress the warning about missing MDC integrity protection.'
+    )
+options.add_argument(
+    '--require-secmem', action='store_true', default=False,
+    dest='require_secmem',
+    help='Refuse to run if %(prog)s cannot get secure memory. Defaults to no.'
+    )
+options.add_argument(
+    '--no-require-secmem', action='store_false', default=False,
+    dest='require_secmem',
+    help='Allow %(prog)s to run even if it cannot get secure memory '
+    '(default).'
+    )
+options.add_argument(
+    '--require-cross-certification', action='store_true', default=True,
+    dest='require_cross_certification',
+    help='When verifying a signature made from a subkey, ensure that the '
+    'cross certification "back signature" on the subkey is present and valid '
+    '(default).'
+    )
+options.add_argument(
+    '--no-require-cross-certification', action='store_false', default=True,
+    dest='require_cross_certification',
+    help='When verifying a signature made from a subkey, do not require that '
+    'the cross certification "back signature" on the subkey is present and '
+    'valid.'
+    )
+options.add_argument(
+    '--expert', action='store_true', default=False, dest='expert',
+    help='Allow the user to do certain nonsensical or "silly" things like '
+    'signing an expired or revoked key, or certain potentially incompatible '
+    'things like generating unusual key types. This also disables certain '
+    'warning messages about potentially incompatible actions. As the name '
+    'implies, this option is for experts only. If you don\'t fully '
+    'understand the implications of what it allows you to do, leave this off.'
+    )
+options.add_argument(
+    '--no-expert', action='store_false', default=False, dest='expert',
+    help='Prevent the user from doing certain nonsensical or "silly" things '
+    'like signing an expired or revoked key, or certain potentially '
+    'incompatible things like generating unusual key types. This also '
+    'enables certain warning messages about potentially incompatible '
+    'actions (default).'
+    )
+key_options = options.add_argument_group('Key related options')
+key_options.add_argument(
+    '--recipient, -r', metavar='name', action='append', dest='recipients',
+    help='Encrypt for user id "name". If this option or --hidden-recipient '
+    'is not specified, %(prog)s asks for the user-id unless '
+    '--default-recipient is given.'
+    )
+key_options.add_argument(
+    '--hidden-recipient, -R', metavar='name', action='append',
+    dest='hidden_recipients',
+    help='Encrypt for user ID "name", but hide the key ID of this user\'s '
+    'key. This option helps to hide the receiver of the message and is a '
+    'limited countermeasure against traffic analysis. If this option or '
+    '--recipient is not specified, %(prog)s asks for the user ID unless '
+    '--default-recipient is given.'
+    )
+key_options.add_argument(
+    '--encrypt-to', metavar='name', action='append', dest='encrypt_to',
+    help='Same as --recipient but this one is intended for use in the '
+    'options file and may be used with your own user-id as an '
+    '"encrypt-to-self". These keys are only used when there are other '
+    'recipients given either by use of --recipient or by the asked user id. '
+    'No trust checking is performed for these user ids and even disabled '
+    'keys can be used.'
+    )
+key_options.add_argument(
+    '--hidden-encrypt-to', metavar='name', action='append',
+    dest='hidden_encrypt_to',
+    help='Same as --hidden-recipient but this one is intended for use in the '
+    'options file and may be used with your own user-id as an '
+    '"encrypt-to-self". These keys are only used when there are other '
+    'recipients given either by use of --recipient or by the asked user id. '
+    'No trust checking is performed for these user ids and even disabled '
+    'keys can be used.'
+    )
+key_options.add_argument(
+    '--no-encrypt-to', action='store_true', dest='no_encrypt_to',
+    help='Disable the use of all --encrypt-to and --hidden-encrypt-to keys.'
+    )
+key_options.add_argument(
+    '--group', metavar='name=value1', action='append', dest='groups',
+    help='Sets up a named group, which is similar to aliases in email '
+    'programs. Any time the group name is a recipient (-r or --recipient), '
+    'it will be expanded to the values specified. Multiple groups with the '
+    'same name are automatically merged into a single group.\n\n'
+    'The values are key IDs or fingerprints, but any key description is '
+    'accepted. Note that a value with spaces in it will be treated as two '
+    'different values. Note also there is only one level of expansion --- '
+    'you cannot make a group that points to another group. When used from '
+    'the command line, it may be necessary to quote the argument to this '
+    'option to prevent the shell from treating it as multiple arguments.'
+    )
+key_options.add_argument(
+    '--ungroup', metavar='name', action='append', dest='ungroups',
+    help='Remove a given entry from the --group list.'
+    )
+key_options.add_argument(
+    '--no-groups', action='store_true', default=False, dest='no_groups',
+    help='Remove all entries from the --group list.'
+    )
+key_options.add_argument(
+    '--local-user, -u', metavar='name', dest='local_user',
+    help='Use "name" as the key to sign with. Note that this option '
+    'overrides --default-key.'
+    )
+key_options.add_argument(
+    '--try-all-secrets', action='store_true', default=False,
+    dest='try_all_secrets',
+    help='Don\'t look at the key ID as stored in the message but try all '
+    'secret keys in turn to find the right decryption key. This option '
+    'forces the behaviour as used by anonymous recipients (created by using '
+    '--throw-keyids or --hidden-recipient) and might come handy in case '
+    'where an encrypted message contains a bogus key ID.'
+    )
+key_options.add_argument(
+    '--skip-hidden-recipients', action='store_true', default=False,
+    dest='skip_hidden_recipients',
+    help='During decryption skip all anonymous recipients. This option helps '
+    'in the case that people use the hidden recipients feature to hide their '
+    'own encrypt-to key from others. If one has many secret keys this may '
+    'lead to a major annoyance because all keys are tried in turn to decrypt '
+    'something which was not really intended for it. The drawback of this '
+    'option is that it is currently not possible to decrypt a message which '
+    'includes real anonymous recipients.'
+    )
+key_options.add_argument(
+    '--no-skip-hidden-recipients', action='store_false', default=False,
+    dest='skip_hidden_recipients',
+    help='During decryption not not skip anonymous recipients (default).'
+    )
+io_options = options.add_argument_group('Input and Output')
+io_options.add_argument(
+    '--armor, -a', action='store_true', default=False, dest='armor_output',
+    help='Create ASCII-armored output. The default is to create the binary '
+    'OpenPGP format.'
+    )
+io_options.add_argument(
+    '--no-armor', action='store_false', default=False, dest='armor_input',
+    help='Assume the input data is not in ASCII armored format.'
+    )
+io_options.add_argument(
+    '--output, -o', metavar='file', dest='output',
+    help='Write output to "file".'
+    )
+io_options.add_argument(
+    '--max-output', metavar='n', type=int, default=0, dest='max_output',
+    'This option sets a limit on the number of bytes that will be generated '
+    'when processing a file. Since OpenPGP supports various levels of '
+    'compression, it is possible that the plaintext of a given message may '
+    'be significantly larger than the original OpenPGP message. While '
+    '%(prog)s works properly with such messages, there is often a desire to '
+    'set a maximum file size that will be generated before processing is '
+    'forced to stop by the OS limits. Defaults to 0, which means "no limit".'
+    )
+io_options.add_argument(
+    '--import-options', metavar='parameters', action='append',
+    dest='import_options',
+    help='This is a space or comma delimited string that gives options for '
+    'importing keys. Options can be prepended with a "no-" to give the '
+    'opposite meaning. The options are:\n\n'
+    'import-local-sigs\n'
+    'Allow importing key signatures marked as '
+    '"local". This is not generally useful unless a shared keyring scheme is '
+    'being used. Defaults to no.\n\n'
+    'repair-pks-subkey-bug\n'
+    'During import, attempt to repair the damage caused by the PKS keyserver '
+    'bug (pre version 0.9.6) that mangles keys with multiple subkeys. Note '
+    'that this cannot completely repair the damaged key as some crucial data '
+    'is removed by the keyserver, but it does at least give you back one '
+    'subkey. Defaults to no for regular --import and to yes for keyserver '
+    '--recv-keys.\n\n'
+    'merge-only\n'
+    'During import, allow key updates to existing keys, but do not allow any '
+    'new keys to be imported. Defaults to no.\n\n'
+    'import-clean\n'
+    'After import, compact (remove all signatures except the self-signature) '
+    'any user IDs from the new key that are not usable. Then, remove any '
+    'signatures from the new key that are not usable. This includes '
+    'signatures that were issued by keys that are not present on the '
+    'keyring. This option is the same as running the --edit-key command '
+    '"clean" after import. Defaults to no.\n\n'
+    'import-minimal\n'
+    'Import the smallest key possible. This removes all signatures except '
+    'the most recent self-signature on each user ID. This option is the same '
+    'as running the --edit-key command "minimize" after import. Defaults to '
+    'no.'
+    )
+io_options.add_argument(
+    '--export-options', metavar='parameters', action='append',
+    dest='export_options',
+    help='This is a space or comma delimited string that gives options for '
+    'exporting keys. Options can be prepended with a "no-" to give the '
+    'opposite meaning. The options are:\n\n'
+    'export-local-sigs\n'
+    'Allow exporting key signatures marked as "local". This is not generally '
+    'useful unless a shared keyring scheme is being used. Defaults to no.\n\n'
+    'export-attributes\n'
+    'Include attribute user IDs (photo IDs) while exporting. This is useful '
+    'to export keys if they are going to be used by an OpenPGP program that '
+    'does not accept attribute user IDs. Defaults to yes.\n\n'
+    'export-sensitive-revkeys\n'
+    'Include designated revoker information that was marked as "sensitive". '
+    'Defaults to no.\n\n'
+    'export-reset-subkey-passwd\n'
+    'When using the --export-secret-subkeys command, this option resets the '
+    'passphrases for all exported subkeys to empty. This is useful when the '
+    'exported subkey is to be used on an unattended machine where a '
+    'passphrase doesn\'t necessarily make sense. Defaults to no.\n\n'
+    'export-clean\n'
+    'Compact (remove all signatures from) user IDs on the key being exported '
+    'if the user IDs are not usable. Also, do not export any signatures that '
+    'are not usable. This includes signatures that were issued by keys that '
+    'are not present on the keyring. This option is the same as running the '
+    '--edit-key command "clean" before export except that the local copy of '
+    'the key is not modified. Defaults to no.\n\n'
+    'export-minimal\n'
+    'Export the smallest key possible. This removes all signatures except '
+    'the most recent self-signature on each user ID. This option is the same '
+    'as running the --edit-key command "minimize" before export except that '
+    'the local copy of the key is not modified. Defaults to no.'
+    )
+io_options.add_argument(
+    '--with-colons', action='store_true', default=False, dest='with_colons',
+    help='Print key listings delimited by colons. Note that the output will '
+    'be encoded in UTF-8 regardless of any --display-charset setting. This '
+    'format is useful when %(prog)s is called from scripts and other '
+    'programs as it is easily machine parsed.'
+    )
+io_options.add_argument(
+    '--fixed-list-mode', action='store_true', default=False,
+    dest='fixed_list_mode',
+    help='Do not merge primary user ID and primary key in --with-colon '
+    'listing mode and print all timestamps as seconds since 1970-01-01.'
+    )
+io_options.add_argument(
+    '--with-fingerprint', action='store_true', default=False,
+    dest='with_fingerprint',
+    help='Same as the command --fingerprint but changes only the format of '
+    'the output and may be used together with another command.'
+    )
+openpgp_options = options.add_argument_group(
+    'OpenPGP protocol specific options')
+openpgp_options.add_argument(
+    '-t, --textmode', action=TextmodeAction, default=False, dest='text_mode',
+    tdest='clearsign',
+    help='Treat input files as text and store them in the OpenPGP canonical '
+    'text form with standard "CRLF" line endings. This also sets the '
+    'necessary flags to inform the recipient that the encrypted or signed '
+    'data is text and may need its line endings converted back to whatever '
+    'the local system uses. This option is useful when communicating between '
+    'two platforms that have different line ending conventions (UNIX-like to '
+    'Mac, Mac to Windows, etc).\n\n'
+    'If -t (but not --textmode) is used together with armoring and signing, '
+    'this enables clearsigned messages. This kludge is needed for '
+    'command-line compatibility with command-line versions of PGP; normally '
+    'you would use --sign or --clearsign to select the type of the signature.'
+    )
+openpgp_options.add_argument(
+    '--force-v3-sigs', action='store_true', default=False,
+    dest='force_v3_sigs',
+    help='OpenPGP states that an implementation should generate v4 '
+    'signatures but PGP versions 5 through 7 only recognize v4 signatures on '
+    'key material. This option forces v3 signatures for signatures on data. '
+    'Note that this option implies --no-ask-sig-expire, and unsets '
+    '--sig-policy-url, --sig-notation, and --sig-keyserver-url, as these '
+    'features cannot be used with v3 signatures. --no-force-v3-sigs disables '
+    'this option. Defaults to no.'
+    )
+openpgp_options.add_argument(
+    '--no-force-v3-sigs', action='store_false', default=False,
+    dest='force_v3_sigs',
+    help='Disables --force-v3-sigs (default).'
+    )
+openpgp_options.add_argument(
+    '--force-v4-certs', action='store_true', default=False,
+    dest='force_v4_certs',
+    help='Always use v4 key signatures even on v3 keys. This option also '
+    'changes the default hash algorithm for v3 RSA keys from MD5 to SHA-1.'
+    )
+openpgp_options.add_argument(
+    '--no-force-v4-certs', action='store_false', default=False,
+    dest='force_v4_certs',
+    help='Disables --force-v4-certs (default).'
+    )
+openpgp_options.add_argument(
+    '--force-mdc', action='store_true', default=False, dest='force_mdc',
+    help='Force the use of encryption with a modification detection code. '
+    'This is always used with the newer ciphers (those with a blocksize '
+    'greater than 64 bits), or if all of the recipient keys indicate MDC '
+    'support in their feature flags.'
+    )
+openpgp_options.add_argument(
+    '--disable-mdc', action='store_true', default=False, dest='disable_mdc',
+    help='Disable the use of the modification detection code. Note that by '
+    'using this option, the encrypted message becomes vulnerable to a '
+    'message modification attack.'
+    )
+openpgp_options.add_argument(
+    '--personal-cipher-preferences', metavar='string',
+    dest='personal_cipher_preferences',
+    help='Set the list of personal cipher preferences to "string". Use '
+    '%(prog)s --version to get a list of available algorithms, and use none '
+    'to set no preference at all. This allows the user to safely override '
+    'the algorithm chosen by the recipient key preferences, as %(prog)s will '
+    'only select an algorithm that is usable by all recipients. The most '
+    'highly ranked cipher in this list is also used for the --symmetric '
+    'encryption command.'
+    )
+openpgp_options.add_argument(
+    '--personal-digest-preferences', metavar='string',
+    dest='personal_digest_preferences',
+    help='Set the list of personal digest preferences to "string". Use '
+    '%(prog)s --version to get a list of available algorithms, and use none '
+    'to set no preference at all. This allows the user to safely override '
+    'the algorithm chosen by the recipient key preferences, as %(prog)s will '
+    'only select an algorithm that is usable by all recipients. The most '
+    'highly ranked digest algorithm in this list is also used when signing '
+    'without encryption (e.g. --clearsign or --sign).'
+    )
 
+openpgp_options.add_argument(
+    '--personal-compress-preferences', metavar='string',
+    dest='personal_compress_preferences',
+    help='Set the list of personal compression preferences to "string". Use '
+    '%(prog)s --version to get a list of available algorithms, and use none '
+    'to set no preference at all. This allows the user to safely override '
+    'the algorithm chosen by the recipient key preferences, as %(prog)s will '
+    'only select an algorithm that is usable by all recipients. The most '
+    'highly ranked compression algorithm in this list is also used when '
+    'there are no recipient keys to consider (e.g. --symmetric).'
+    )
+openpgp_options.add_argument(
+    '--s2k-cipher-algo', metavar='name', dest='s2k_cipher_algo',
+    help='Use "name" as the cipher algorithm used to protect secret keys. '
+    'The default cipher is CAST5. This cipher is also used for conventional '
+    'encryption if  --personal-cipher-preferences and --cipher-algo is not '
+    'given.'
+    )
+openpgp_options.add_argument(
+    '--s2k-digest-algo', metavar='name', dest='s2k_digest_algo',
+    help='Use name as the digest algorithm used to mangle the passphrases. '
+    'The default algorithm is SHA-1.'
+    )
+openpgp_options.add_argument(
+    '--s2k-mode', metavar='n', type=int, choices=(0, 1, 3), default=3,
+    dest='s2k_mode',
+    help='Selects how passphrases are mangled. If n is 0 a plain passphrase '
+    '(which is not recommended) will be used, a 1 adds a salt to the '
+    'passphrase and a 3 (the default) iterates the whole process a number of '
+    'times (see --s2k-count). Unless --rfc1991 is used, this mode is also '
+    'used for conventional encryption.'
+    )
+openpgp_options.add_argument(
+    '--s2k-count', metavar='n', type=int, dest='s2k_count', default=65536,
+    # TODO: not really - it's the number of bytes hashed
+    help='Specify how many times the passphrase mangling is repeated. This '
+    'value may range between 1024 and 65011712 inclusive. The default is '
+    '65536. Note that not all values in the 1024-65011712 range are legal '
+    'and if an illegal value is selected, %(prog)s will round up to the '
+    'nearest legal value. This option is only meaningful if --s2k-mode is 3.'
+    )
+compliance_options = options.add_argument_group('Compliance options')
+compliance_options.add_argument(
+    '--gnupg', action='store_const', const=Compliance.GnuPG,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Use standard GnuPG behavior. This is essentially OpenPGP behavior '
+    '(see --openpgp), but with some additional workarounds for common '
+    'compatibility problems in different versions of PGP. This is the '
+    'default option, so it is not generally needed, but it may be useful to '
+    'override a different compliance option in the configuration file.'
+    )
+compliance_options.add_argument(
+    '--openpgp', action='store_const', const=Compliance.OpenPGP,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Reset all packet, cipher and digest options to strict OpenPGP '
+    'behavior. Use this option to reset all previous options like --s2k-*, '
+    '--cipher-algo, --digest-algo and --compress-algo to OpenPGP compliant '
+    'values. All PGP workarounds are disabled.'
+    )
+compliance_options.add_argument(
+    '--rfc4880', action='store_const', const=Compliance.RFC4880,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Reset all packet, cipher and digest options to strict RFC-4880 '
+    'behavior. Note that this is currently the same thing as --openpgp.'
+    )
+compliance_options.add_argument(
+    '--rfc2440', action='store_const', const=Compliance.RFC2440,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Reset all packet, cipher and digest options to strict RFC-2440 '
+    'behavior.'
+    )
+compliance_options.add_argument(
+    '--rfc1991', action='store_const', const=Compliance.RFC1991,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Try to be more RFC-1991 (PGP 2.x) compliant.'
+    )
+compliance_options.add_argument(
+    '--pgp2', action='store_const', const=Compliance.PGP2,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Set up all options to be as PGP 2.x compliant as possible, and '
+    'warn if an action is taken (e.g. encrypting to a non-RSA key) that will '
+    'create a message that PGP 2.x will not be able to handle. Note that '
+    '"PGP 2.x" here means "MIT PGP 2.6.2". There are other versions of PGP '
+    '2.x available, but the MIT release is a good common baseline.\n\n'
+    'This option implies --rfc1991 --disable-mdc --no-force-v4-certs '
+    '--escape-from-lines --force-v3-sigs --cipher-algo IDEA '
+    '--digest-algo MD5 --compress-algo ZIP. It also disables --textmode when '
+    'encrypting.'
+    )
+compliance_options.add_argument(
+    '--pgp6', action='store_const', const=Compliance.PGP6,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Set up all options to be as PGP 6 compliant as possible. This '
+    'restricts you to the ciphers IDEA (if the IDEA plugin is installed), '
+    '3DES, and CAST5, the hashes MD5, SHA1 and RIPEMD160, and the '
+    'compression algorithms none and ZIP. This also disables --throw-keyids, '
+    'and making signatures with signing subkeys as PGP 6 does not understand '
+    'signatures made by signing subkeys.\n\n'
+    'This option implies --disable-mdc --escape-from-lines --force-v3-sigs.'
+    )
+compliance_options.add_argument(
+    '--pgp7', action='store_const', const=Compliance.PGP7,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Set up all options to be as PGP 7 compliant as possible. This is '
+    'identical to --pgp6 except that MDCs are not disabled, and the list of '
+    'allowable ciphers is expanded to add AES128, AES192, AES256, and '
+    'TWOFISH.'
+    )
+compliance_options.add_argument(
+    '--pgp8', action='store_const', const=Compliance.PGP8,
+    dest='compliance', default=Compliance.GnuPG,
+    help='Set up all options to be as PGP 8 compliant as possible. PGP 8 is '
+    'a lot closer to the OpenPGP standard than previous versions of PGP, so '
+    'all this does is disable --throw-keyids and set --escape-from-lines. '
+    'All algorithms are allowed except for the SHA224, SHA384, and SHA512 '
+    'digests.'
+    )
 # commands
 commands = argparser.add_argument_group('Commands')
 commands.add_argument(
