@@ -140,14 +140,14 @@ Low level
 Parsing a packet stream
 ```````````````````````
 ::
-    
+
     from pgp.packets import parsers
     parsers.parse_binary_packet_data(packet_data)
 
 Serializing a packet
 ````````````````````
 ::
-    
+
     from pgp.packets import parsers
     packets = parsers.parse_binary_packet_data(packet_data)
     b''.join(map(bytes, packets))
@@ -162,6 +162,11 @@ and in non-obvious ways. If you are concerned about key data being
 compromised by a memory leak, do not use this package for handling
 secret key data. On the other hand, "if your memory is constantly being
 compromised, I would re-think your security setup."
+
+OpenPGP uses compression algorithms. Beware when feeding untrusted data
+into this library of
+`Zip bomb <http://en.wikipedia.org/wiki/Zip_bomb>`_ or similar denial
+of service attacks.
 
 Development
 -----------
