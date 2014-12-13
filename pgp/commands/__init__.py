@@ -19,6 +19,23 @@ class Compliance:
     PGP8 = 9
 
 
+class DebugLevel:
+
+    None_ = 0
+    Basic = 1
+    Advanced = 2
+    Expert = 3
+    Guru = 4
+
+    levels = {
+        None_: 'none',
+        Basic: 'basic',
+        Advanced: 'advanced',
+        Expert: 'expert',
+        Guru: 'guru',
+        }
+
+
 class Commands:
 
     Sign = 1
@@ -81,6 +98,39 @@ _export_secret_help = (
     'implementations can not be expected to successfully import such a key. '
     'See the option --simple-sk-checksum if you want to import such an '
     'exported key with an older OpenPGP implementation.'
+    )
+_notation_help = (
+    'Put the name value pair into the signature as notation data. "name" '
+    'must consist only of printable characters or spaces, and must contain a '
+    '"@" character in the form keyname@domain.example.com (substituting the '
+    'appropriate keyname and domain name, of course). This is to help '
+    'prevent pollution of the IETF reserved notation  namespace. The '
+    '--expert  flag overrides the "@" check. value may be any printable '
+    'string; it will be encoded in UTF8, so you should check that your '
+    '--display-charset is set correctly. If you prefix name with an '
+    'exclamation mark (!), the notation data will be flagged as critical '
+    '(RFC4880: 5.2.3.16). --sig-notation sets a notation for data '
+    'signatures. --cert-notation sets a notation for key signatures '
+    '(certifications). --set-notation sets both.\n\n'
+    'There are special codes that may be used in notation names. "%k" will '
+    'be expanded into the key ID of the key being signed, "%K" into the long '
+    'key ID of the key being signed, "%f" into the fingerprint of the key '
+    'being signed, "%s" into the key ID of the key making the signature, '
+    '"%S" into the long key ID of the key making the signature, "%g" into '
+    'the fingerprint of the key making the signature (which might be a '
+    'subkey), "%p" into the fingerprint of the primary key of the key '
+    'making the signature, "%c" into the signature count from the OpenPGP '
+    'smartcard, and "%%" results in a single "%". %k, %K, and %f are only '
+    'meaningful when making a key signature (certification), and %c is only '
+    'meaningful when using the OpenPGP smartcard.'
+    )
+_policy_url_help = (
+    'Use "string" as a Policy URL for signatures (RFC4880: 5.2.3.20). If you '
+    'prefix it with an exclamation mark (!), the policy URL packet will be '
+    'flagged as critical. --sig-policy-url sets a policy url for data '
+    'signatures. --cert-policy-url sets a policy url for key signatures '
+    '(certifications). --set-policy-url sets both.\n\n'
+    'The same %-expandos used for notation data are available here as well.'
     )
 
 
@@ -1041,6 +1091,550 @@ compliance_options.add_argument(
     'All algorithms are allowed except for the SHA224, SHA384, and SHA512 '
     'digests.'
     )
+abnormal_options = options.add_argument_group(
+    'Doing things one usually doesn\'t want to do.')
+abnormal_options.add_argument(
+    '-n, --dry-run', action='store_true', default=False, dest='dry_run',
+    help='Don\'t make any changes.'
+    )
+abnormal_options.add_argument(
+    '--list-only', action='store_true', default=False, dest='list_only',
+    help='Changes the behavior of some commands. This is like --dry-run but '
+    'different in some cases. The semantics of this command may be extended '
+    'in the future. Currently it only skips the actual decryption pass and '
+    'therefore enables a fast listing of the encryption keys.'
+    )
+abnormal_options.add_argument(
+    '-i, --interactive', action='store_true', default=False,
+    dest='interactive', help='Prompt before overwriting any files.'
+    )
+abnormal_options.add_argument(
+    '--debug-level', choices=(
+        tuple(DebugLevel.levels.values())
+        + tuple(DebugLevel.levels.keys())
+    ), default=DebugLevel.None_, dest='debug_level',
+    help='Select the debug level for investigating problems. level may be a '
+    'numeric value or by a keyword:\n\n'
+    'none\nNo debugging at all. A value of 0 may be used instead of the '
+    'keyword.\n\n'
+    'basic\nSome basic debug messages. A value of 1 may be used instead of '
+    'the keyword.\n\n'
+    'advanced\nMore verbose debug messages. A value of 2 may be used instead '
+    'of the keyword.\n\n'
+    'expert\nEven more detailed messages. A value of 3 may be used instead '
+    'of the keyword.\n\n'
+    'guru\nAll of the debug messages you can get. A value of 4 may be used '
+    'instead of the keyword. The creation of hash tracing files is only '
+    'enabled if the keyword is used.\n\n'
+    'How these messages are mapped to the actual debugging flags is not '
+    'specified and may change with newer releases of this program. They are '
+    'however carefully selected to best aid in debugging.'
+    )
+# abnormal_options.add_argument(
+#     '--debug', metavar='flags', dest='debug_flags',
+#     help='Set debugging flags. All flags are or-ed and flags may be given in '
+#     'C syntax (e.g. 0x0042).'
+#     )
+# abnormal_options.add_argument(
+#     '--debug-all', action='store_const', const=0xFFFF, dest='debug_flags',
+#     help='Set all useful debugging flags.'
+#     )
+# abnormal_options.add_argument(
+#     '--debug-ccid-driver', action='store_true', default=False,
+#     dest='debug_ccid',
+#     help='Enable debug output from the included CCID driver for '
+#     'smartcards. Note that this option is only available on some systems.'
+#     )
+abnormal_options.add_argument(
+    '--faked-system-time', metavar='epoch', type=int, default=-1,
+    dest='faked_system_time',
+    help='This option is only useful for testing; it sets the system time '
+    'back or forth to epoch which is the number of seconds elapsed since the '
+    'year 1970. Alternatively epoch may be given as a full ISO time string '
+    '(e.g. "20070924T154812").'
+    )
+abnormal_options.add_argument(
+    '--enable-progress-filter', action='store_true', default=False,
+    dest='progress_filter',
+    help='Enable certain PROGRESS status outputs. This option allows '
+    'frontends to display a progress indicator while gpg is processing '
+    'larger files. There is a slight performance overhead using it.'
+    )
+abnormal_options.add_argument(
+    '--status-fd', metavar='n', type=int, dest='status_fd',
+    help='Write special status strings to the file descriptor n.'
+    )
+abnormal_options.add_argument(
+    '--status-file', metavar='file', dest='status_file',
+    help='Same as --status-fd, except the status data is written to file '
+    '"file".'
+    )
+abnormal_options.add_argument(
+    '--logger-fd', metavar='n', type=int, dest='logger_fd',
+    help='Write log output to file descriptor n and not to STDERR.'
+    )
+abnormal_options.add_argument(
+    '--log-file, --logger-file', metavar='file', dest='logger_file',
+    help='Same as --logger-fd, except the logger data is written to file '
+    '"file".'
+    )
+abnormal_options.add_argument(
+    '--attribute-fd', metavar='n', dest='attribute_fd',
+    help='Write attribute subpackets to the file descriptor "n". This is '
+    'most useful for use with --status-fd, since the status messages are '
+    'needed to separate out the various subpackets from the stream delivered '
+    'to the file descriptor.'
+    )
+abnormal_options.add_argument(
+    '--attribute-file', metavar='file', dest='attribute_file',
+    help='Same as --attribute-fd, except the attribute data is written to '
+    'file "file".'
+    )
+abnormal_options.add_argument(
+    '--comment', metavar='string', dest='comments', action='append',
+    help='Use string as a comment string in clear text signatures and ASCII '
+    'armored messages or keys (see --armor). The default behavior is not to '
+    'use a comment string. --comment  may be  repeated  multiple times to '
+    'get multiple comment strings. It is a good idea to keep the length of a '
+    'single comment below 60 characters to avoid problems with mail programs '
+    'wrapping such lines. Note that comment lines, like all other header '
+    'lines, are not protected by the signature.'
+    )
+abnormal_options.add_argument(
+    '--no-comments', action='store_const', const=[], dest='comments',
+    help='--no-comments removes all comments.'
+    )
+abnormal_options.add_argument(
+    '--emit-version', action='count', default=1, dest='emit_version',
+    help='Force inclusion of the version string in ASCII armored output. If '
+    'given once only the name of the program and the major number is emitted '
+    '(default), given twice the minor is also emitted, given triple the '
+    'micro is added, and given quad an operating system identification is '
+    'also emitted.'
+    )
+abnormal_options.add_argument(
+    '--no-emit-version', action='store_const', const=0, dest='emit_version',
+    help='Disable the version line in ASCII armored output.'
+    )
+abnormal_options.add_argument(
+    '--sig-notation', metavar='name=value', action='append',
+    dest='signature_notations',
+    help=_notation_help
+    )
+abnormal_options.add_argument(
+    '--cert-notation', metavar='name=value', action='append',
+    dest='certification_notations',
+    help=_notation_help
+    )
+abnormal_options.add_argument(
+    '-N, --set-notation', metavar='name=value', action='append',
+    dest='notations',
+    help=_notation_help
+    )
+abnormal_options.add_argument(
+    '--sig-policy-url', metavar='string', dest='sig_policy_url',
+    help=_policy_url_help
+    )
+abnormal_options.add_argument(
+    '--cert-policy-url', metavar='string', dest='cert_policy_url',
+    help=_policy_url_help
+    )
+abnormal_options.add_argument(
+    '--set-policy-url', metavar='string', dest='policy_url',
+    help=_policy_url_help
+    )
+abnormal_options.add_argument(
+    '--sig-keyserver-url', metavar='string', dest='preferred_keyserver',
+    help='Use string as a preferred keyserver URL for data signatures. If '
+    'you prefix it with an exclamation mark (!), the keyserver URL packet '
+    'will be flagged as critical.\n\n'
+    'The same %-expandos used for notation data are available here as well.'
+    )
+abnormal_options.add_argument(
+    '--set-filename', metavar='string', dest='message_filename',
+    help='Use "string" as the filename which is stored inside messages. This '
+    'overrides the default, which is to use the actual filename of the file '
+    'being encrypted.'
+    )
+abnormal_options.add_argument(
+    '--for-your-eyes-only', action='store_true', default=False,
+    dest='for_your_eyes_only',
+    help='Set the "for your eyes only" flag in the message. This causes '
+    '%(prog)s to refuse to save the file unless the --output option is '
+    'given, and PGP to use a "secure viewer" with a claimed '
+    'Tempest-resistant font to display the message. This option overrides '
+    '--set-filename.'
+    )
+abnormal_options.add_argument(
+    '--no-for-your-eyes-only', action='store_false', default=False,
+    dest='for_your_eyes_only',
+    help='Disables --for-your-eyes-only (default).'
+    )
+abnormal_options.add_argument(
+    '--use-embedded-filename', action='store_true', default=False,
+    dest='use_embedded_filename',
+    help='Try to create a file with the name as embedded in the data. This '
+    'can be a dangerous option as it may overwrite existing files.'
+    )
+abnormal_options.add_argument(
+    '--no-use-embedded-filename', action='store_false', default=False,
+    dest='use_embedded_filename',
+    help='Do not use the filename embedded in the data to create the file '
+    '(default).'
+    )
+abnormal_options.add_argument(
+    '--cipher-algo', metavar='name', dest='cipher_algo',
+    help='Use "name" as cipher algorithm. Running the program with the '
+    'command --version yields a list of supported algorithms. If this is not '
+    'used the cipher algorithm is selected from the preferences stored with '
+    'the key. In general, you do not want to use this option as it allows '
+    'you to violate the OpenPGP standard. --personal-cipher-preferences is '
+    'the safe way to accomplish the same thing.'
+    )
+abnormal_options.add_argument(
+    '--digest-algo', metavar='name', dest='digest_algo',
+    help='Use "name" as the message digest algorithm. Running the program '
+    'with the command --version yields a list of supported algorithms. If '
+    'this is not used the digest algorithm is selected from the preferences '
+    'stored with the key. In general, you do not want to use this option as '
+    'it allows you to violate the OpenPGP standard. '
+    '--personal-digest-preferences is the safe way to accomplish the same '
+    'thing.'
+    )
+abnormal_options.add_argument(
+    '--compress-algo', metavar='name', dest='compress_algo',
+    help='Use compression algorithm name. "zlib" is RFC-1950 ZLIB '
+    'compression. "zip" is  RFC-1951 ZIP compression which is used by PGP. '
+    '"bzip2" is a more modern compression scheme that can compress some '
+    'things better than zip or zlib, but at the cost of more memory used '
+    'during compression and decompression. "uncompressed" or "none" disables '
+    'compression. If this option is not used, the default behavior is to '
+    'examine the recipient key preferences to see which algorithms the '
+    'recipient supports. If all else fails, ZIP is used for maximum '
+    'compatibility.\n\n'
+    'ZLIB may give better compression results than ZIP, as the compression '
+    'window size is not limited to 8k. BZIP2 may give even better '
+    'compression results than that, but will use a significantly larger '
+    'amount of memory while compressing and decompressing. This may be '
+    'significant in low memory situations. Note, however, that PGP (all '
+    'versions) only supports ZIP compression. Using any algorithm other than '
+    'ZIP or "none" will make the message unreadable with PGP. In general, '
+    'you do not want to use this option as it allows you to violate the '
+    'OpenPGP standard. --personal-compress-preferences is the safe way to '
+    'accomplish the same thing.'
+    )
+abnormal_options.add_argument(
+    '--cert-digest-algo', metavar='name', dest='cert_digest_algo',
+    help='Use "name" as the message digest algorithm used when signing a '
+    'key. Running the program with the command --version yields a list of '
+    'supported  algorithms. Be aware that if you choose an algorithm that '
+    '%(prog)s supports but other OpenPGP implementations do not, then some '
+    'users will not be able to use the key signatures you make, or quite '
+    'possibly your entire key.'
+    )
+abnormal_options.add_argument(
+    '--disable-cipher-algo', metavar='name', action='append',
+    dest='disabled_cert_cipher_algos',
+    help='Never allow the use of "name" as cipher algorithm. The given name '
+    'will not be checked so that a later loaded algorithm will still get '
+    'disabled.'
+    )
+abnormal_options.add_argument(
+    '--disable-pubkey-algo', metavar='name', action='append',
+    dest='disabled_pubkey_algos',
+    help='Never allow the use of name as public key algorithm. The given '
+    'name will not be checked so that a later loaded algorithm will still '
+    'get disabled.'
+    )
+abnormal_options.add_argument(
+    '--throw-keyids', action='store_true', dest='throw_keys', default=None,
+    help='Do not put the recipient key IDs into encrypted messages. This '
+    'helps to hide the receivers of the message and is a limited '
+    'countermeasure against traffic analysis. ([Using a little social '
+    'engineering anyone who is able to decrypt the message can check whether '
+    'one of the other recipients is the one he suspects.]) On the receiving '
+    'side, it may slow down the decryption process because all available '
+    'secret keys must be tried. This option is essentially the same as using '
+    '--hidden-recipient for all recipients.'
+    )
+abnormal_options.add_argument(
+    '--no-throw-keyids', action='store_false', dest='throw_keys',
+    default=None,
+    help='Disables --throw-keyids.'
+    )
+abnormal_options.add_argument(
+    '--not-dash-escaped', action='store_true', dest='not_dash_escaped',
+    default=False,
+    help='This option changes the behavior of cleartext signatures so that '
+    'they can be used for patch files. You should not send such an armored '
+    'file via email because all spaces and line endings are hashed too. You '
+    'can not use this option for data which has 5 dashes at the beginning of '
+    'a line, patch files don\'t have this. A special armor header line tells '
+    '%(prog)s about this cleartext signature option.'
+    )
+abnormal_options.add_argument(
+    '--escape-from-lines', action='store_true', dest='escape_from_lines',
+    default=True,
+    help='Because some mailers change lines starting with "From " to '
+    '">From " it is good to handle such lines in a special way when creating '
+    'cleartext signatures to prevent the mail system from breaking the '
+    'signature. Note that all other PGP versions do it this way too. Enabled '
+    'by default.'
+    )
+abnormal_options.add_argument(
+    '--no-escape-from-lines', action='store_false', dest='escape_from_lines',
+    default=True,
+    help='Disables --escape-from-lines.'
+    )
+abnormal_options.add_argument(
+    '--passphrase-repeat', metavar='n', type=int, dest='passphrase_repeat',
+    default=1,
+    help='Specify how many times %(prog)s will request a new passphrase be '
+    'repeated. This is usefulfor helping memorize a passphrase. Defaults to '
+    '1 repetition.'
+    )
+abnormal_options.add_argument(
+    '--passphrase-fd', metavar='n', type=int, dest='passphrase_fd',
+    default=None,
+    help='Read the passphrase from file descriptor n. Only the first line '
+    'will be read from file descriptor n. If you use 0 for n, the passphrase '
+    'will be read from STDIN. This can only be used if only one passphrase '
+    'is supplied.'
+    )
+abnormal_options.add_argument(
+    '--passphrase-file', metavar='file', dest='passphrase_file',
+    default=None,
+    help='Read the passphrase from file "file". Only the first line will be '
+    'read from file "file". This can only be used if only one passphrase is '
+    'supplied. Obviously, a passphrase stored in a file is of questionable '
+    'security if other users can read this file. Don\'t use this option if '
+    'you can avoid it.'
+    )
+abnormal_options.add_argument(
+    '--passphrase', metavar='string', dest='passphrase', default=None,
+    help='Use string as the passphrase. This can only be used if only one '
+    'passphrase is supplied. Obviously, this is of very questionable '
+    'security on a multi-user system. Don\'t use this option if you can '
+    'avoid it.'
+    )
+abnormal_options.add_argument(
+    '--command-fd', metavar='n', type=int, dest='command_fd', default=None,
+    help='If this option is enabled, user input on questions is not expected '
+    'from the TTY but from the given file descriptor. It should be used '
+    'together with --status-fd.'
+    )
+abnormal_options.add_argument(
+    '--command-file', metavar='file', dest='command_file', default=None,
+    help='Same as --command-fd, except the commands are read out of file '
+    '"file".'
+    )
+abnormal_options.add_argument(
+    '--allow-non-selfsigned-uid', action='store_true',
+    dest='allow_non_selfsigned_uid', default=None,
+    help='Allow the import and use of keys with user IDs which are not '
+    'self-signed. This is not recommended, as a non self-signed user ID is '
+    'trivial to forge.'
+    )
+abnormal_options.add_argument(
+    '--no-allow-non-selfsigned-uid', action='store_false',
+    dest='allow_non_selfsigned_uid', default=None,
+    help='Disables --allow-non-selfsigned-uid.'
+    )
+abnormal_options.add_argument(
+    '--allow-freeform-uid', action='store_true', dest='allow_freeform_uid',
+    default=None,
+    help='Disable all checks on the form of the user ID while generating a '
+    'new one. This option should only be used in very special environments '
+    'as it does not ensure the de-facto standard format of user IDs.'
+    )
+abnormal_options.add_argument(
+    '--ignore-time-conflict', action='store_true',
+    dest='ignore_time_conflict', default=None,
+    help='%(prog)s normally checks that the timestamps associated with keys '
+    'and signatures have plausible values. However, sometimes a signature '
+    'seems to be older than the key due to clock problems. This option makes '
+    'these checks just a warning. See also --ignore-valid-from for timestamp '
+    'issues on subkeys.'
+    )
+abnormal_options.add_argument(
+    '--ignore-valid-from', action='store_true', dest='ignore_valid_from',
+    default=None,
+    help='%(prog)s normally does not select and use subkeys created in the '
+    'future. This option allows the use of such keys. You should not use '
+    'this option unless there is some clock problem. See also '
+    '"--ignore-time-conflict" for timestamp issues with signatures.'
+    )
+abnormal_options.add_argument(
+    '--ignore-crc-error', action='store_true', dest='ignore_crc_error',
+    default=False,
+    help='The ASCII armor used by OpenPGP is protected by a CRC checksum '
+    'against transmission errors. Occasionally the CRC gets mangled '
+    'somewhere on the transmission channel but the actual content (which is '
+    'protected by the OpenPGP protocol anyway) is still okay. This option '
+    'allows %(prog)s to ignore CRC errors.'
+    )
+abnormal_options.add_argument(
+    '--ignore-mdc-error', action='store_true', dest='ignore_mdc_error',
+    default=False,
+    help='This option changes a MDC integrity protection failure into a '
+    'warning. This can be useful if a message is partially corrupt, but it '
+    'is necessary to get as much data as possible out of the corrupt '
+    'message. However, be aware that a MDC protection failure may also mean '
+    'that the message was tampered with intentionally by an attacker.'
+    )
+abnormal_options.add_argument(
+    '--no-default-keyring', action='store_true', dest='no_default_keyring',
+    default=False,
+    help='Do not add the default keyrings to the list of keyrings. Note that '
+    '%(prog)s will not operate without any keyrings, so if you use this '
+    'option and do not provide alternate keyrings via --keyring or '
+    '--secret-keyring, then %(prog)s will still use the default public or '
+    'secret keyrings.'
+    )
+abnormal_options.add_argument(
+    '--skip-verify', action='store_true', dest='skip_sig_verification',
+    default=False,
+    help='Skip the signature verification step. This may be used to make the '
+    'decryption faster if the signature verification is not needed.'
+    )
+abnormal_options.add_argument(
+    '--with-key-data', action='store_true', dest='with_key_data',
+    default=False,
+    help='Print key listings delimited by colons (like --with-colons) and '
+    'print the public key data.'
+    )
+abnormal_options.add_argument(
+    '--fast-list-mode', action='store_true', dest='fast_list_mode',
+    default=False,
+    help='Changes the output of the list commands to work faster; this is '
+    'achieved by leaving some parts empty. Some applications don\'t need the '
+    'user ID and the trust information given in the listings. By using this '
+    'options they can get a faster listing. The exact behaviour of this '
+    'option may change in future versions. If you are missing some '
+    'information, don\'t use this option.'
+    )
+abnormal_options.add_argument(
+    '--no-literal', action='store_true', dest='no_literal', default=False,
+    help='Outputs the raw data rather than encoding it in a literal packet.'
+    )
+abnormal_options.add_argument(
+    '--set-filesize', metavar='n', dest='set_filesize', default=None,
+    help='Sets the file size of a data packet to "n" bytes, regardless of '
+    'the actual data size.'
+    )
+abnormal_options.add_argument(
+    '--show-session-key', action='store_true', dest='show_session_key',
+    default=False,
+    help='Display the session key used for one message. See '
+    '"--override-session-key" for the counterpart of this option.\n\n'
+    'We think that Key Escrow is a Bad Thing; however the user should have '
+    'the freedom to decide whether to go to prison or to reveal the content '
+    'of one specific message without compromising all messages ever '
+    'encrypted for one secret key. DON\'T USE IT UNLESS YOU ARE REALLY '
+    'FORCED TO DO SO.'
+    )
+abnormal_options.add_argument(
+    '--override-session-key', metavar='string', dest='override_session_key',
+    help='Don\'t use the public key but the session key string. The format '
+    'of this string is the same as the one printed by "--show-session-key". '
+    'This option is normally not used but comes handy in case someone forces '
+    'you to reveal the content of an encrypted message; using this option '
+    'you can do this without handing out the secret key.'
+    )
+abnormal_options.add_argument(
+    '--ask-sig-expire', action='store_true', dest='ask_sig_expire',
+    default=None,
+    help='When making a data signature, prompt for an expiration time. If '
+    'this option is not specified, the expiration time set via '
+    '"--default-sig-expire" is used.'
+    )
+abnormal_options.add_argument(
+    '--no-ask-sig-expire', action='store_false', dest='ask_sig_expire',
+    default=None,
+    help='Disables "--ask-sig-expire".'
+    )
+abnormal_options.add_argument(
+    '--default-sig-expire', metavar='time', dest='default_sig_expire',
+    help='The default expiration time to use for signature expiration. Valid '
+    'values are "0" for no expiration, a number followed by the letter "d" '
+    '(for days), "w" (for weeks), "m" (for months), or "y" (for years) (for '
+    'example "2m" for two months, or "5y" for five years), or an absolute '
+    'date in the form YYYY-MM-DD. Defaults to "0".'
+    )
+abnormal_options.add_argument(
+    '--ask-cert-expire', action='store_true', dest='ask_cert_expire',
+    default=None,
+    help='When making a key signature, prompt for an expiration time. If '
+    'this option is not specified, the expiration time set via '
+    '"--default-cert-expire" is used.'
+    )
+abnormal_options.add_argument(
+    '--no-ask-cert-expire', action='store_false', dest='ask_cert_expire',
+    default=None,
+    help='Disables "--ask-cert-expire".'
+    )
+abnormal_options.add_argument(
+    '--default-cert-expire', metavar='time', dest='default_cert_expire',
+    help='The default expiration time to use for key signature expiration. '
+    'Valid values are "0" for no expiration, a number followed by the letter '
+    '"d" (for  days), "w" (for  weeks), "m" (for months), or "y" (for years) '
+    '(for example "2m" for two months, or "5y" for five years), or an '
+    'absolute date in the form YYYY-MM-DD. Defaults to "0".'
+    )
+#abnormal_options.add_argument(
+#    '--allow-secret-key-import',
+#    )
+abnormal_options.add_argument(
+    '--allow-multiple-messages', action='store_true', default=None,
+    dest='allow_multiple_messages',
+    help='Allow processing of multiple OpenPGP messages contained in a '
+    'single file or stream. Some programs that call %(prog)s are not '
+    'prepared to deal with multiple messages being processed together, so '
+    'this option defaults to no.'
+    )
+abnormal_options.add_argument(
+    '--no-allow-multiple-messages', action='store_false', default=None,
+    dest='allow_multiple_messages',
+    help='Disables "--allow-multiple-message".'
+    )
+abnormal_options.add_argument(
+    '--enable-special-filenames', action='store_true', default=None,
+    dest='enable_special_filenames',
+    help='This options enables a mode in which filenames of the form `-&n\', '
+    'where "n" is a non-negative decimal number, refer to the file '
+    'descriptor "n" and not to a file with that name.'
+    )
+#abnormal_options.add_argument(
+#    '--no-expensive-trust-checks'
+#    )
+abnormal_options.add_argument(
+    '--preserve-permissions', action='store_true', default=None,
+    dest='preserve_permissions',
+    help='Don\'t change the permissions of a secret keyring back to user '
+    'read/write only. Use this option only if you really know what you are '
+    'doing.'
+    )
+abnormal_options.add_argument(
+    '--default-preference-list', metavar='string', dest='default_prefs_list',
+    help='Set the list of default preferences to "string". This preference '
+    'list is used for new keys and becomes the default for "setpref" in the '
+    'edit menu.'
+    )
+abnormal_options.add_argument(
+    '--default-keyserver-url', metavar='name', dest='default_keyserver_url',
+    help='Set the default keyserver URL to name. This keyserver will be used '
+    'as the keyserver URL when writing a new self-signature on a key, which '
+    'includes key generation and changing preferences.'
+    )
+#abnormal_options.add_argument(
+#    '--list-config',
+#    )
+#abnormal_options.add_argument(
+#    '--gpgconf-list'
+#    )
+#abnormal_options.add_argument(
+#    '--gpgconf-test'
+#    )
 # commands
 commands = argparser.add_argument_group('Commands')
 commands.add_argument(
@@ -1392,10 +1986,16 @@ commands.add_argument(
     'from --edit-key.'
     )
 # args
+argparser.add_argument(
+    'args', metavar='arg', nargs='*'
+    )
 
 
-def main():
-    pass
+def main(*fnargs, **fnkwargs):
+    args = argparser.parse_args(*fnargs)
+    for k, v in fnkwargs.items():
+        setattr(args, k, v)
+
 
 
 if __name__ == '__main__':
