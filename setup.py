@@ -32,6 +32,7 @@ long_description = '\n\n'.join([open(f).read() for f in [
 requires = [
     'python-magic',
     'pycrypto',
+    'six',
     'requests',
     'zope.interface',
     ]

@@ -15,5 +15,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-__version__ = '0.0.1'
+NAME = 'pgp'
+__version__ = VERSION = '0.0.1'
+
+
 from pgp.shortcuts import *

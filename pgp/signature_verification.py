@@ -64,7 +64,8 @@ def get_revocation_keys(key):
                 yield revkey_info.fingerprint[-16:]
 
 
-def check_back_signatures(key, subkey_binding_signature, strict=False):
+def check_back_signatures(key, subkey_binding_signature, strict=False,
+                          current_time=None):
     """Validates the backsignature of a subkey binding signature if one
     exists.
     """
@@ -88,7 +89,7 @@ def check_back_signatures(key, subkey_binding_signature, strict=False):
                         hashed_subpacket_data
                         )
             try:
-                check_signature(key, sig, hash_, strict)
+                check_signature(key, sig, hash_, strict, current_time)
             except InvalidSignature as e:
                 raise_with(InvalidBackSignature(target.key_id), e)
 
@@ -100,7 +101,7 @@ def check_back_signatures(key, subkey_binding_signature, strict=False):
         raise MissingBackSignature()
 
 
-def check_signature_values(key, signature, strict=False):
+def check_signature_values(key, signature, current_time=None, strict=False):
     """Do basic checks on the signature validity including chronology
     validation, expiration and revocation.
     """
@@ -110,7 +111,8 @@ def check_signature_values(key, signature, strict=False):
 
     key_expired = False
     key_revoked = False
-    current_time = datetime.datetime.now()
+    if current_time is None:
+        current_time = datetime.datetime.now()
     key_creation_time = key.creation_time
     sig_creation_time = signature.creation_time
 
@@ -180,13 +182,14 @@ def key_verify(expected_hash, signature, key):
     return key.verify(signature, expected_hash)
 
 
-def check_signature(key, signature, hash_, strict=False):
+def check_signature(key, signature, hash_, strict=False, current_time=None):
     """Validate the signature created by this key matches the digest of
     the data it claims to sign.
     """
 
     key_expired, key_revoked = \
-            check_signature_values(key, signature, strict)
+            check_signature_values(key, signature, strict,
+                                   current_time=current_time)
 
     # Perform the quick check first before busting out the public key
     # algorithms
@@ -199,20 +202,22 @@ def check_signature(key, signature, hash_, strict=False):
     return key_expired, key_revoked
 
 
-def validate_key_signature(signature, hash_, key, strict=False):
+def validate_key_signature(signature, hash_, key, strict=False,
+                           current_time=None):
     """Validates whether the signature of a key is valid."""
 
     key_expired, key_revoked = \
-            check_signature(key, signature, hash_, strict)
+            check_signature(key, signature, hash_, strict,
+                            current_time=current_time)
     parent = key.public_key_parent
     if parent:
-        check_back_signatures(key, signature)
+        check_back_signatures(key, signature, strict, current_time)
 
     return key_expired, key_revoked
 
 
 def check_revocation_keys(key, signature, hash_, signing_key,
-                          strict=False):
+                          strict=False, current_time=None):
     """Validates a revocation signature on a public key, where the key
     being revoked has been signed by another key.
     """
@@ -220,11 +225,11 @@ def check_revocation_keys(key, signature, hash_, signing_key,
     for rk in get_revocation_keys(key):
         if rk[-len(key.key_id):] == key.key_id:
             return validate_key_signature(signature, hash_, signing_key,
-                                          strict)
+                                          strict, current_time)
 
 
 def validate_signature(target, signature, signing_key, public_key=None,
-                       strict=False):
+                       strict=False, current_time=None):
     """Returns a tuple of three booleans, the first indicates whether
     the signature has expired, the second indicates if the signing key
     has expired, the third indicates if the signing key has been
@@ -253,30 +258,31 @@ def validate_signature(target, signature, signing_key, public_key=None,
         # public key revocation
         if public_key.key_id not in signature.issuer_key_ids:
             result = check_revocation_keys(public_key, signature,
-                                           hash_, signing_key, strict)
+                                           hash_, signing_key, strict,
+                                           current_time)
         else:
             result = check_signature(public_key, signature, hash_,
-                                     strict)
+                                     strict, current_time)
     elif sig_type == constants.SUBKEY_REVOCATION_SIGNATURE:
         # subkey revocation
         result = check_signature(public_key, signature, hash_,
-                                 strict)
+                                 strict, current_time)
     elif sig_type == constants.SUBKEY_BINDING_SIGNATURE:
         # key binding
         if public_key.key_id not in signature.issuer_key_ids:
             raise InvalidSubkeyBindingSignature()
         result = check_signature(public_key, signature, hash_,
-                                 strict)
+                                 strict, current_time)
     elif sig_type == constants.SIGNATURE_DIRECTLY_ON_A_KEY:
         # direct key signature
         result = check_signature(public_key, signature, hash_,
-                                 strict)
+                                 strict, current_time)
     elif sig_type in (constants.GENERIC_CERTIFICATION,
                       constants.CASUAL_CERTIFICATION,
                       constants.POSITIVE_CERTIFICATION,
                       constants.PERSONA_CERTIFICATION):
         result = check_signature(signing_key, signature, hash_,
-                                 strict)
+                                 strict, current_time)
     elif sig_type == constants.PRIMARY_KEY_BINDING_SIGNATURE:
         # Backsignature, we shouldn't have this here
         raise UnexpectedSignatureType(constants.PRIMARY_KEY_BINDING_SIGNATURE)

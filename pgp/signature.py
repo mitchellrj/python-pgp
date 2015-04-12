@@ -218,7 +218,7 @@ class BaseSignature(object):
     def __init__(self, target, version, signature_type, public_key_algorithm,
                  hash_algorithm, hash2, signature_values, creation_time=None,
                  issuer_key_id=None, hashed_subpackets=None,
-                 unhashed_subpackets=None):
+                 unhashed_subpackets=None, current_time_fn=None):
 
         self._target_ref = weakref.ref(target)
         self.version = version
@@ -237,6 +237,9 @@ class BaseSignature(object):
                 self.issuer_key_ids = [issuer_key_id]
         self.hashed_subpackets = hashed_subpackets or []
         self.unhashed_subpackets = unhashed_subpackets or []
+        if current_time_fn is None:
+            current_time_fn = datetime.datetime.now
+        self.get_current_time = current_time_fn
 
     def __eq__(self, other):
         return bytes(self.to_packet()) == bytes(other.to_packet())
@@ -832,7 +835,7 @@ class BaseSignature(object):
     @property
     def expired(self):
         if self.signature_expiration_time:
-            return datetime.datetime.now() > self.signature_expiration_time
+            return self.get_current_time() > self.signature_expiration_time
         return False
 
     @property
