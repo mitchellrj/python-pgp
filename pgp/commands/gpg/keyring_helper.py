@@ -14,3 +14,10 @@ class KeyringHelper(object):
             mode = 0o777
             self.io_helper.permissions_warning(keyring, mode,
                                                0o700)
+
+    def get_secret_key(self):
+        pass
+
+    def find_recipient(self, recipient_string):
+        # Return the first one that matches
+        return None

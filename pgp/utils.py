@@ -309,10 +309,11 @@ class NoopCompression(object):
 
 class ZlibCompression(object):
 
-    def __init__(self):
+    def __init__(self, level):
         self._obj = None
         self._compress = None
         self._result = b''
+        self.level = level
 
     def compress(self, data):
         if self._result is None:
@@ -322,7 +323,7 @@ class ZlibCompression(object):
             raise ValueError
         if self._obj is None:
             self._compress = True
-            self._obj = zlib.compressobj()
+            self._obj = zlib.compressobj(self.level)
             self._result += self._obj.compress(data)
         return b''
 
@@ -354,10 +355,11 @@ _DecompressionObj = zlib.decompressobj().__class__
 
 class DeflateCompression(object):
 
-    def __init__(self):
+    def __init__(self, level):
         self._obj = None
         self._compress = None
         self._result = b''
+        self.level = level
 
     def compress(self, data):
         if self._result is None:
@@ -367,7 +369,7 @@ class DeflateCompression(object):
             raise ValueError
         if self._obj is None:
             self._compress = True
-            self._obj = zlib.compressobj()
+            self._obj = zlib.compressobj(self.level)
         self._result += self._obj.compress(data)
         return b''
 
@@ -398,19 +400,19 @@ class DeflateCompression(object):
         return result
 
 
-def get_compression_instance(type_):
+def get_compression_instance(type_, level=None):
 
     instance = None
     if type_ == 0:
         instance = NoopCompression()
     elif type_ == 1:
         # DEFLATE - RFC 1951
-        instance = DeflateCompression()
+        instance = DeflateCompression(level)
     elif type_ == 2:
         # ZLIB - RFC 1950
-        instance = ZlibCompression()
+        instance = ZlibCompression(level)
     elif type_ == 3:
-        instance = bz2.BZ2Compressor()
+        instance = bz2.BZ2Compressor(level)
 
     return instance
 

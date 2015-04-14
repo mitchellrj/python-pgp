@@ -4,7 +4,12 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
+
+from six import text_type
+
+from pgp.commands.gpg.exceptions import FatalException
 
 
 class IOHelper(object):
@@ -15,7 +20,7 @@ class IOHelper(object):
                  default_recipient, default_recipient_self,
                  no_default_recipent, use_agent, exit_on_status_write_error,
                  exit, no_greeting, no_permission_warning, local_user,
-                 interactive, debug_level, faked_system_time, progress_filter,
+                 interactive, debug_level, progress_filter,
                  status_file, logger_fd, logger_file, attribute_fd,
                  attribute_file, passphrase_repeat, passphrase_fd,
                  passphrase_file, passphrase, command_fd, command_file,
@@ -104,6 +109,21 @@ class IOHelper(object):
 
     def get_passphrase(self):
         pass
+
+    def get_timestamp(self, filename):
+        if filename is None:
+            timestamp = datetime.datetime.now()
+            if self.self.faked_system_time:
+                if u'T' in self.faked_system_time:
+                    timestamp = datetime.datetime.strptime(
+                        '%Y%m%dT%H%M%s')
+                else:
+                    timestamp = datetime.datetime.fromtimestamp(
+                        self.faked_system_time)
+        else:
+            timestamp = datetime.datetime.fromtimestamp(
+                os.path.getmtime(filename))
+        return timestamp
 
     def get_current_time(self):
         if self.faked_system_time:
@@ -239,10 +259,29 @@ class IOHelper(object):
             if close:
                 stdout.close()
 
-    def write_pgp_content(self, output, stdout=None):
+    def write_output(self, output, stdout=None, output_filename=None):
         if self.max_output:
             limit = self.max_output
+        if output_filename is None:
+            output_filename = self.output_file
+        if output_filename:
+            stdout = self.open_file(output_filename, 'wb')
         if stdout is None:
             stdout = self.stdout
-        else:
-            output
+        written_bytes = 1
+        total_bytes = 0
+        while written_bytes:
+            written_bytes = stdout.write(output.read(1024))
+            total_bytes += written_bytes
+            if limit and total_bytes > limit:
+                raise FatalException(1)
+        return total_bytes
+
+
+    def open_file(self, filename, mode='rb'):
+        if isinstance(filename, text_type):
+            filename = filename.encode(sys.getfilesystemencoding())
+        return open(filename, mode)
+
+    def open_stdin(self):
+        return self.stdin

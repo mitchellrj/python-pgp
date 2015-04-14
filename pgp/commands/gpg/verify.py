@@ -18,6 +18,8 @@ VALID_VERIFY_OPTIONS = set([
 
 class Command(object):
 
+    multifile = True
+
     def __init__(self, verify_options):
         self.verify_options = dict([
             ((

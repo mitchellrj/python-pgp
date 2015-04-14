@@ -35,5 +35,5 @@ class TrustDBHelper(object):
         self.io_helper.permissions_warning(self.trustdb_file, mode,
                                            0o700)
 
-    def check_trustdb(self):
+    def check_trustdb(self, key, level=None):
         pass

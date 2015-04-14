@@ -2,6 +2,7 @@ try:
     from collections import UserString  # @UndefinedVariable
 except ImportError:
     UserString = unicode  # @UndefinedVariable
+import os.path
 
 
 class FormattedString(UserString):
@@ -34,6 +35,15 @@ class Formatter(object):
         self.with_key_data = with_key_data
         self.fast_list_mode = fast_list_mode
 
+    def make_output_filename(self, filename):
+        if filename is None:
+            return None
+        if self.armor_output:
+            ext = u'asc'
+        else:
+            ext = u'gpg'
+        return u'{0}{1}{2}'.format(filename, os.path.extsep, ext)
+
     def format_key(self, key):
         fields = key
         if self.fixed_list_mode:
@@ -42,3 +52,13 @@ class Formatter(object):
             pass
         if self.with_colons:
             FormattedString(u':'.join(fields), force_encoding='utf-8')
+
+    def format_message(self, message, armor=None):
+        if armor is None:
+            armor = self.armor_output
+        pass
+
+    def format_signature(self, signature, armor=None):
+        if armor is None:
+            armor = self.armor_output
+        pass

@@ -86,6 +86,7 @@ class Commands:
     EditKey = 'edit_key'
     SignKey = 'sign_key'
     LocalSignKey = 50
+    ShowSessionKey = 'show_session_key'
 
 
 _export_secret_help = (
@@ -1614,6 +1615,7 @@ def make_argparser(prog,
         )
     abnormal_options.add_argument(
         '--compress-algo', metavar='name', dest='compress_algo',
+        choices=['zlib', 'zip', 'bzip2'], default='zip',
         help='Use compression algorithm name. "zlib" is RFC-1950 ZLIB '
         'compression. "zip" is  RFC-1951 ZIP compression which is used by '
         'PGP. "bzip2" is a more modern compression scheme that can compress '
@@ -1841,8 +1843,8 @@ def make_argparser(prog,
         'of the actual data size.'
         )
     abnormal_options.add_argument(
-        '--show-session-key', action='store_true', dest='show_session_key',
-        default=False,
+        '--show-session-key', action='append_const', dest='commands',
+        const=Commands.ShowSessionKey,
         help='Display the session key used for one message. See '
         '"--override-session-key" for the counterpart of this option.\n\n'
         'We think that Key Escrow is a Bad Thing; however the user should '

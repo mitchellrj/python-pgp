@@ -44,7 +44,7 @@ class BaseMessage(object):
 
     def sign(self, secret_key, signature_version=4,
              signature_type=C.SIGNATURE_OF_A_BINARY_DOCUMENT,
-             hash_algorithm=None):
+             hash_algorithm=None, one_pass=True):
 
         if hash_algorithm is None:
             hash_algorithms = secret_key.preferred_hash_algorithms
@@ -54,25 +54,46 @@ class BaseMessage(object):
                 hash_algorithm = 1
         signature = secret_key.sign(self, signature_version, signature_type,
                                     hash_algorithm)
-        return SignedMessageWrapper([signature], self)
+        return SignedMessageWrapper([signature], self, one_pass)
 
-    def compress(self, compression_algorithm):
-        return CompressedMessageWrapper(compression_algorithm, self)
+    def compress(self, compression_algorithm, compression_level):
+        return CompressedMessageWrapper(compression_algorithm,
+                                        compression_level, self)
 
-    def public_key_encrypt(self, symmetric_algorithm, public_key,
+    def public_key_encrypt(self, symmetric_algorithm, public_key=None,
+                           public_keys=None, hidden_public_keys=None,
                            session_key=None, integrity_protect=True):
+        if public_keys is not None and public_key is not None:
+            raise TypeError(
+                'Must be called with one of `public_key` or '
+                '`public_keys`.')
+        elif public_key is not None:
+            public_keys = [public_key]
+        if hidden_public_keys is None:
+            hidden_public_keys = []
         if session_key is None:
             key_len = utils.symmetric_cipher_key_lengths[symmetric_algorithm]
             session_key = Random.new().read(key_len)
-        session_key_obj = PublicKeySessionKey(
-            3, public_key=public_key, symmetric_algorithm=symmetric_algorithm,
-            session_key=session_key)
+        session_key_objs = []
+        for public_key in public_keys:
+            session_key_objs.append(
+                PublicKeySessionKey(3, public_key=public_key,
+                                    symmetric_algorithm=symmetric_algorithm,
+                                    session_key=session_key)
+                )
+        for public_key in hidden_public_keys:
+            session_key_objs.append(
+                PublicKeySessionKey(3, public_key=public_key,
+                                    symmetric_algorithm=symmetric_algorithm,
+                                    session_key=session_key,
+                                    hide_key_id=True)
+                )
         packet_data = b''.join(map(bytes, self.to_packets()))
         message_data_obj = SymmetricallyEncryptedMessageData(
             symmetric_algorithm, session_key, packet_data,
             integrity_protected=integrity_protect, version=1
             )
-        return EncryptedMessageWrapper([session_key_obj], message_data_obj)
+        return EncryptedMessageWrapper(session_key_objs, message_data_obj)
 
     def symmetric_encrypt(self, symmetric_algorithm, passphrase,
                           session_key=None, integrity_protect=True,
@@ -119,9 +140,6 @@ class LiteralMessage(BaseMessage):
     # A literal data packet
     packet_header_type = C.NEW_PACKET_HEADER_TYPE
 
-    def __init__(self, *args, **kwargs):
-        raise NotImplemented
-
     @classmethod
     def from_packet(cls, packet):
         data_format = packet.data_format
@@ -135,7 +153,7 @@ class LiteralMessage(BaseMessage):
         return class_(data, filename, timestamp)
 
     @abc.abstractmethod
-    def __init__(self, message, filename, timestamp):
+    def __init__(self, data, filename, timestamp):
         self.data = data
         self.filename = filename
         self.timestamp = timestamp
@@ -317,7 +335,7 @@ class PublicKeySessionKey(object):
 
     def __init__(self, version, public_key=None, symmetric_algorithm=None,
                  session_key=None, public_key_algorithm=None, key_id=None,
-                 encrypted_key=None):
+                 encrypted_key=None, hide_key_id=False):
         self.version = version
         self.public_key_algorithm = public_key_algorithm
         self.key_id = key_id
@@ -685,9 +703,10 @@ class CompressedMessageWrapper(BaseMessage):
         return cls(packet.compression_algorithm,
                    compressed_data=packet.compressed_data)
 
-    def __init__(self, compression_algorithm, message=None,
-                 compressed_data=None):
+    def __init__(self, compression_algorithm, compression_level=None,
+                 message=None, compressed_data=None):
         self.compression_algorithm = compression_algorithm
+        self.compression_level = compression_level
         if compressed_data is not None:
             self.data = compressed_data
         if message is not None:
@@ -701,7 +720,7 @@ class CompressedMessageWrapper(BaseMessage):
     def set_message(self, message):
         pkts = message.to_packets()
         self.data = packets.CompressedDataPacket.compress_packets(
-            self.compression_algorithm, pkts)
+            self.compression_algorithm, self.compression_level, pkts)
 
     def to_packet(self, header_format=None):
         if header_format is None:

@@ -1082,8 +1082,8 @@ class CompressedDataPacket(Packet):
         self.compressed_data = compressed_data
 
     @classmethod
-    def compress_packets(cls, algorithm, packets):
-        algo = utils.get_compression_instance(algorithm)
+    def compress_packets(cls, algorithm, level, packets):
+        algo = utils.get_compression_instance(algorithm, level)
         packet_data = b''.join(map(bytes, packets))
         data = algo.compress(packet_data)
         data += algo.flush()
