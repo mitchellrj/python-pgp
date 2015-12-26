@@ -14,8 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from Crypto.SelfTest.Cipher.common import make_block_tests
-
 from pgp.cipher import aidea
 
 
@@ -110,12 +108,9 @@ test_data = [
     ]
 
 
-def get_testcases(config={}):
-    testcases = make_block_tests(aidea, "AIDEA", test_data)
-    return testcases
-
-
 def test_aidea():
-    for testcase in get_testcases():
+    from Crypto.SelfTest.Cipher.common import make_block_tests
+
+    for testcase in make_block_tests(aidea, "AIDEA", test_data):
         # Hack for Nose
         yield getattr(testcase, testcase._testMethodName)

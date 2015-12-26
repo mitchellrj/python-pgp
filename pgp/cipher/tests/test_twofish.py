@@ -18,8 +18,6 @@
 import unittest
 import warnings
 
-from Crypto.SelfTest.Cipher.common import make_block_tests
-
 from pgp.cipher import twofish
 
 
@@ -101,17 +99,16 @@ test_data = [
 ]
 
 
-def get_tests(config={}):
-    return make_block_tests(twofish, "Twofish", test_data)
-
-
 def test_twofish():
+    from Crypto.SelfTest.Cipher.common import make_block_tests
+
     if twofish is None:
         warnings.warn(
             "Twofish not available on this system. Skipping its tests."
             )
         return
-    for testcase in get_tests():
+
+    for testcase in make_block_tests(twofish, "Twofish", test_data):
         # Hack for Nose
         yield getattr(testcase, testcase._testMethodName)
 

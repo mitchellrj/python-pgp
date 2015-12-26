@@ -18,8 +18,6 @@
 import unittest
 import warnings
 
-from Crypto.SelfTest.Cipher.common import make_block_tests
-
 from pgp.cipher import camellia
 
 
@@ -320,18 +318,16 @@ test_data = [
 ]
 
 
-def get_tests(config={}):
-    return make_block_tests(camellia, "Camellia", test_data)
-
-
 def test_camellia():
+    from Crypto.SelfTest.Cipher.common import make_block_tests
+
     if camellia is None:
         warnings.warn(
             "Camellia not available on this system. Skipping its tests."
             )
         return
 
-    for testcase in get_tests():
+    for testcase in make_block_tests(camellia, "Camellia", test_data):
         # Hack for Nose
         yield getattr(testcase, testcase._testMethodName)
 
