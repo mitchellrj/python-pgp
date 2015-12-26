@@ -1088,7 +1088,7 @@ def make_argparser(prog,
         )
     io_options.add_argument(
         '--max-output', metavar='n', type=int, default=0, dest='max_output',
-        'This option sets a limit on the number of bytes that will be '
+        help='This option sets a limit on the number of bytes that will be '
         'generated when processing a file. Since OpenPGP supports various '
         'levels of compression, it is possible that the plaintext of a given '
         'message may be significantly larger than the original OpenPGP '
