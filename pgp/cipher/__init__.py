@@ -23,9 +23,22 @@ __all__ = ['aidea', 'camellia', 'twofish']
 
 try:
     import camcrypt
-    camcrypt.CamCrypt()
+    try:
+        camcrypt.CamCrypt()
+    except OSError:
+        # On python3 the lib is not called camellia.so, but something
+        # like camellia.cpython-34m.so. Use globbing to find a
+        # candidate. This should be fixed upstream in the camcrypt
+        # module instead.
+        import glob
+        import os
+        sofile = glob.glob(os.path.join(camcrypt.__path__[0], 'camellia*.so'))[0]
+        camcrypt.CamCrypt(libraryPath=sofile)
+        camcrypt_kwargs = {'libraryPath': sofile}
+    else:
+        camcrypt_kwargs = {}
     HAS_CAMELLIA = True
-except (ImportError, OSError):
+except (ImportError, IndexError, OSError):
     HAS_CAMELLIA = False
 
 
