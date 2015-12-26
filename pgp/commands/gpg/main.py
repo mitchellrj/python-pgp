@@ -34,15 +34,15 @@ def make_it_so(cls, **params):
 
 
 COMMAND_COMBINATIONS = {
-    set([Commands.Encrypt, Commands.Symmetric, Commands.Sign]):
+    tuple(sorted((Commands.Encrypt, Commands.Symmetric, Commands.Sign))):
         combinations.EncryptSymmetricAndSign,
-    set([Commands.Encrypt, Commands.Sign]):
+    tuple(sorted((Commands.Encrypt, Commands.Sign))):
         combinations.EncryptAndSign,
-    set([Commands.Symmetric, Commands.Sign]):
+    tuple(sorted((Commands.Symmetric, Commands.Sign))):
         combinations.SymmetricAndSign,
-    set([Commands.Fingerprint, Commands.CheckSigs]):
+    tuple(sorted((Commands.Fingerprint, Commands.CheckSigs))):
         combinations.FingerprintCheckSigs,
-    set([Commands.Fingerprint, Commands.ListSigs]):
+    tuple(sorted((Commands.Fingerprint, Commands.ListSigs))):
         combinations.FingerprintListSigs,
     }
 
@@ -111,7 +111,7 @@ def main(argv=None,
             params['show_fingerprints'] += 1
 
     if len(command_options) > 1:
-        combination_key = set(command_options)
+        combination_key = tuple(sorted(set(command_options)))
         if combination_key not in COMMAND_COMBINATIONS:
             argparser.error(u'Cannot specify more than one command.')
         command_class = COMMAND_COMBINATIONS[combination_key]
