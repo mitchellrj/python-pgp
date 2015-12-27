@@ -583,7 +583,8 @@ class GPGDatabase(object):
 
     def keys(self):
         for resource in self._resources.values():
-            yield from resource.keys()
+            for item in resource.keys():
+                yield item
 
     def search(self, fingerprint=None, key_id=None, user_id=None):
         results = []

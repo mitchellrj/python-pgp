@@ -15,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import datetime
-import time
 from urllib.parse import unquote
 from urllib.parse import urljoin
 from urllib.parse import urlparse
@@ -134,6 +133,8 @@ class HKPKeyserverClient(object):
         else:
             version = 1
             count = None
+
+        del version, count  # unused
 
         results = []
         pub_key = None

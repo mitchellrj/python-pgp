@@ -16,8 +16,10 @@
 
 from base64 import b64encode
 import sys
+import traceback
 
 import magic
+import pgpdump
 
 from pgp.exceptions import CannotParseCritical
 from pgp.exceptions import CannotParseCriticalNotation

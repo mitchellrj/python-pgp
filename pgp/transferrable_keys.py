@@ -380,7 +380,8 @@ class BasePublicKey(SignedMixin):
                                        long(self.exponent_e)
                                        ))
         else:
-            raise exceptions.UnsupportedPublicKeyAlgorithm(algorithm_type)
+            raise exceptions.UnsupportedPublicKeyAlgorithm(
+                self.public_key_algorithm)
 
         return key_obj
 
@@ -502,7 +503,8 @@ class BaseSecretKey(BasePublicKey):
                                        long(self.multiplicative_inverse_u)
                                        ))
         else:
-            raise UnsupportedPublicKeyAlgorithm(algorithm_type)
+            raise exceptions.UnsupportedPublicKeyAlgorithm(
+                self.public_key_algorithm)
 
         return key_obj
 
@@ -708,8 +710,8 @@ class UserID(SignedMixin):
     def primary_public_key(self):
         return self._primary_public_key_ref()
 
-    def _make_user_id(self, name, email, comment):
-        result = email.utils.formataddr((name, email), 'utf8')
+    def _make_user_id(self, name, emailaddr, comment):
+        result = email.utils.formataddr((name, emailaddr), 'utf8')
         if comment:
             result = u"{0} ({1})".format(result, comment)
         return result

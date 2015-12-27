@@ -41,7 +41,6 @@ from pgp.exceptions import SigningKeyCreatedInTheFuture
 from pgp.exceptions import SigningKeyHasBeenRevoked
 from pgp.exceptions import SigningKeyHasExpired
 from pgp.exceptions import UnexpectedSignatureType
-from pgp.exceptions import UnsupportedPublicKeyAlgorithm
 from pgp.packets import constants
 from pgp.transferrable_keys import TransferablePublicKey
 from pgp.transferrable_keys import TransferableSecretKey

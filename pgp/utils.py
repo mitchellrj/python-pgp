@@ -511,7 +511,7 @@ def hash_packet_for_signature(packet_for_hash,
         data_to_hash.extend(int_to_4byte(signature_creation_time))
     else:
         data_to_hash.append(pub_algorithm_type)
-        data_to_hash.append(fake_hash_algorithm or hash_algorithm_type)
+        data_to_hash.append(fake_hash_algorithm_type or hash_algorithm_type)
         hashed_subpacket_length = len(hashed_subpacket_data)
         data_to_hash.extend(int_to_2byte(hashed_subpacket_length))
         data_to_hash.extend(hashed_subpacket_data)

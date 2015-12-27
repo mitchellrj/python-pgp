@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import datetime
 from io import BytesIO
 import os
@@ -276,7 +278,6 @@ class IOHelper(object):
             if limit and total_bytes > limit:
                 raise FatalException(1)
         return total_bytes
-
 
     def open_file(self, filename, mode='rb'):
         if isinstance(filename, text_type):

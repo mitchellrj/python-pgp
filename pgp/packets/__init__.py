@@ -14,6 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from pgp.packets.parsers import parse_ascii_packet_data
-from pgp.packets.parsers import parse_binary_packet_data
-from pgp.packets.parsers import parse_binary_packet_stream
+from pgp.packets.parsers import parse_ascii_packet_data     # noqa
+from pgp.packets.parsers import parse_binary_packet_data    # noqa
+from pgp.packets.parsers import parse_binary_packet_stream  # noqa
