@@ -109,3 +109,16 @@ human_signature_types = {
     0x40: 'Timestamp signature',
     0x50: 'Third-Party Confirmation signature',
     }
+
+
+# Public Key Algorithms
+# see: https://www.iana.org/assignments/pgp-parameters/pgp-parameters.xml
+PUBKEY_ALGO_RSA = 1
+PUBKEY_ALGO_RSA_E = 2       # RSA encrypt only
+PUBKEY_ALGO_RSA_S = 3       # RSA sign only
+PUBKEY_ALGO_ELGAMAL_E = 16  # encrypt only ElGamal (but not for v3)
+PUBKEY_ALGO_DSA = 17
+PUBKEY_ALGO_ECDH = 18
+PUBKEY_ALGO_ECDSA = 19
+PUBKEY_ALGO_ELGAMAL = 20    # sign and encrypt ElGamal
+PUBKEY_ALGO_ECC = 22        # generic ECC

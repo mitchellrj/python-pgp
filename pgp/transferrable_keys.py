@@ -487,7 +487,7 @@ class BaseSecretKey(BasePublicKey):
                                        long(self.group_order_q),
                                        long(self.exponent_x)
                                        ))
-        elif self.public_key_algorithm == 20:
+        elif self.public_key_algorithm in (16, 20):
             key_obj = key_constructor((long(self.prime_p),
                                        long(self.group_generator_g),
                                        long(self.key_value_y),

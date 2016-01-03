@@ -180,6 +180,8 @@ def get_hash_instance(type_):
 def get_public_key_constructor(type_):
     """Given a public key type code, returns a function which may be
     used to construct a new instance of that key.
+
+    Type is one of the PUBKEY_ALGO_* defines found in constants.py.
     """
     if type_ == 1:
         # rsa encrypt or sign
@@ -562,7 +564,7 @@ def int_to_bytes(i):
     bytes_required = int(math.ceil(bits_required / 8.0))
     result = bytearray(
         [(i >> (j * 8)) & 0xff
-         for j in range(bytes_required, 0, -1)
+         for j in range(bytes_required - 1, -1, -1)
          ])
     return result
 
