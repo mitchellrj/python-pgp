@@ -118,21 +118,22 @@ Retrieving a key from a keyserver and creating a message for it
     >>> ks = get_keyserver('hkp://pgp.mit.edu/')
     >>> results = ks.search('Joe Bloggs')
     >>> recipient_key = results[0].get()
+    >>> recipient_subkey = recipient_key.subkeys[0]
     >>> message = message.TextMessage(
-    ...     u"This message was encrypted using Python PGP",
+    ...     u"This message was encrypted using Python PGP\n",
+    ...     u"somefilename.txt",
     ...     datetime.datetime.now())
     >>> my_secret_key = read_key_file('secret_key.gpg')
     >>> my_secret_key.unlock('My passphrase')
     >>> message = message.sign(my_secret_key)
-    >>> message = message.compress(2)  # Compression algorithm 2
-    >>> message = message.public_key_encrypt(9, recipient_key)
+    >>> message = message.compress(2, 6)  # 2=ZLIB, 6=default-level
+    >>> message = message.public_key_encrypt(9, recipient_subkey)
     >>> message_packets = message.to_packets()
     >>> message_data = b''.join(map(bytes, message_packets))
     >>> armored_message = armor.ASCIIArmor(
     ...     armor.PGP_MESSAGE, message_data)
-    >>> file_handle = open('message.asc', 'w')
-    >>> file_handle.write(str(armored_message))
-    >>> file_handle.close()
+    >>> with open('message.asc', 'w') as file_handle:
+    ...     file_handle.write(str(armored_message))
 
 Low level
 =========

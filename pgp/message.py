@@ -186,7 +186,7 @@ class TextMessage(LiteralMessage):
     def to_signable_data(self, signature_type, signature_version=3):
         data = self.data.encode('utf8')
         if signature_type == C.SIGNATURE_OF_A_CANONICAL_TEXT_DOCUMENT:
-            return INCOMPLETE_CRLF.replace(b'\r\n', data)
+            return INCOMPLETE_CRLF.sub(b'\r\n', data)
         return data
 
 

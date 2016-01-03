@@ -118,7 +118,7 @@ def test_twofish():
 
 if hasattr(unittest, 'skip'):
     # Python >= 3.1
-    test_camellia = unittest.skipIf(
+    test_twofish = unittest.skipIf(
                         twofish is None,
                         "Twofish not available on this system."
                     )(test_twofish)
