@@ -560,16 +560,16 @@ def make_argparser(prog,
     options.add_argument(
         '--compress-level', metavar='n', type=int, dest='z_compress_level',
         default=6,
-        help='Set compression level to n for the ZIP and ZLIB  compression '
+        help='Set compression level to n for the ZIP and ZLIB compression '
         'algorithms. The default is to use the default compression level of '
-        'zlib (normally 6). A value of 0  for  n  disables compression.'
+        'zlib (normally 6). A value of 0 for n disables compression.'
         )
     options.add_argument(
         '--bzip2-compress-level', metavar='n', type=int,
         dest='bz_compress_level', default=6,
         help='Set the compression  level for the BZIP2 compression algorithm '
         '(defaulting to 6). This is a different option from --compress-level '
-        'since BZIP2  uses  a  significant amount of memory for each '
+        'since BZIP2 uses a significant amount of memory for each '
         'additional compression level.'
         )
     options.add_argument(

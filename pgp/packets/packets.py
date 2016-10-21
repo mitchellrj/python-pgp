@@ -717,7 +717,7 @@ class PublicKeyPacket(Packet):
                 warnings.warn(
                     "These are no longer permitted. An implementation MUST "
                     "NOT generate such keys. An implementation MUST NOT "
-                    "generate Elgamal signatures. These must only be used "
+                    "generate ElGamal signatures. These must only be used "
                     "for test purposes.")
             data.extend(utils.int_to_mpi(self.prime))
             data.extend(utils.int_to_mpi(self.group_generator))
@@ -877,7 +877,7 @@ class SecretKeyPacket(PublicKeyPacket):
             self.prime_q = values[2]
             self.multiplicative_inverse_u = values[3]
         elif self.public_key_algorithm in (16, 17, 20):
-            # DSA & Elg
+            # DSA & ElGamal
             self.exponent_x = values[0]
         else:
             raise ValueError

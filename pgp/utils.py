@@ -192,7 +192,7 @@ def get_public_key_constructor(type_):
         # rsa sign only
         return RSA.construct
     elif type_ == 16:
-        # elgamel encrypt only
+        # elgamal encrypt only
         return ElGamal.construct
     elif type_ == 17:
         # dsa
@@ -204,7 +204,7 @@ def get_public_key_constructor(type_):
         # ecdsa
         raise UnsupportedPublicKeyAlgorithm(19)
     elif type_ == 20:
-        # elgamel encrypt or sign
+        # elgamal encrypt or sign
         return ElGamal.construct
     elif type_ == 21:
         # diffie-hellman
