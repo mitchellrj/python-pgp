@@ -220,7 +220,8 @@ class BaseSignature(object):
                  issuer_key_id=None, hashed_subpackets=None,
                  unhashed_subpackets=None, current_time_fn=None):
 
-        self._target_ref = weakref.ref(target)
+        if target:
+            self._target_ref = weakref.ref(target)
         self.version = version
         self.signature_type = signature_type
         self.public_key_algorithm = public_key_algorithm

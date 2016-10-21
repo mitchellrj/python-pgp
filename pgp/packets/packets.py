@@ -20,7 +20,7 @@ import time
 import warnings
 
 from Crypto import Random
-from Crypto.Cipher import PKCS1_v1_5
+from Crypto.Cipher.PKCS1_v1_5 import PKCS115_Cipher
 from Crypto.Hash import SHA
 
 from pgp.packets import constants
@@ -34,6 +34,54 @@ from pgp import utils
 
 SYM_ENC_ID_PROTECTED_DATA_PACKET_TYPE = \
     constants.SYMMETRICALLY_ENCRYPTED_AND_INTEGRITY_PROTECTED_DATA_PACKET_TYPE
+
+
+class PKCS115_ElGamal_Cipher(PKCS115_Cipher):
+    """PKCS115_Cipher adapted to work with ElGamal instead of RSA.
+    """
+    def encrypt(self, message):
+        class non_zero_rand_byte:
+            def __init__(self, rf):
+                self.rf = rf
+
+            def __call__(self, c):
+                while c == b'\x00' or c == 0x00:
+                    c = self.rf(1)[0]
+                return c
+
+        randfunc = Random.new().read
+        k = (self._key.p.bit_length() + 7) // 8
+        mlen = len(message)
+
+        # Step 1
+        if mlen > k - 11:
+            raise ValueError("Plaintext is too long.")
+
+        # Step 2a
+        ps = bytes(map(non_zero_rand_byte(randfunc), randfunc(k - mlen - 3)))
+        # Step 2b
+        em = b'\x00\x02' + ps + b'\x00' + message
+        # Step 3a (OS2IP), step 3b (RSAEP), part of step 3c (I2OSP)
+        m = self._key.encrypt(em, 0)
+        # Skip step 3c (I2OSP)
+        # ...
+        return m
+
+    def decrypt(self, ct, sentinel):
+        k = (self._key.p.bit_length() + 7) // 8
+
+        # Skip step 1
+        # ...
+        # Step 2a (O2SIP), 2b (RSADP), and part of 2c (I2OSP)
+        m = self._key.decrypt(ct)
+        # Complete step 2c (I2OSP)
+        em = b'\x00' * (k - len(m)) + m
+        # Step 3
+        sep = em.find(b'\x00', 2)
+        if not em.startswith(b'\x00\x02') or sep < 10:
+            return sentinel
+        # Step 4
+        return em[(sep + 1):]
 
 
 class Packet(object):
@@ -150,27 +198,45 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
     def _get_key_and_cipher_algo(cls, public_key_algorithm, secret_key_obj,
                                  encrypted_session_key):
         if public_key_algorithm in (1, 2, 3):
-            cipher = PKCS1_v1_5.new(secret_key_obj)
+            cipher = PKCS115_Cipher(secret_key_obj)
+        elif public_key_algorithm in (16,):
+            cipher = PKCS115_ElGamal_Cipher(secret_key_obj)
         else:
             cipher = secret_key_obj
         sentinel = Random.new().read((secret_key_obj.size() + 1) // 8)
         encrypted_session_key_length = len(encrypted_session_key)
         decrypted_values = []
         offset = 0
+        ems = []
+
         while offset < (encrypted_session_key_length - 2):
             mpilen = utils.mpi_length(encrypted_session_key, offset)
             offset += 2
             em = encrypted_session_key[offset:offset + mpilen]
             offset += mpilen
-            em = b'\00' * (len(sentinel) - len(em)) + em
-            m = cipher.decrypt(em, sentinel)
-            if m == sentinel:
-                raise ValueError()
-            decrypted_values.append(m)
-        if public_key_algorithm in (1, 2, 3):
-            # RSA
+            ems.append(bytes(em))
+
+        if len(ems) == 1:
+            # RSA takes a single argument.
+            em = ems[0]
+        else:
+            # ElGamal takes a 2-tuple.
+            em = tuple(ems)
+
+        m = cipher.decrypt(em, sentinel)
+        if m == sentinel:
+            raise ValueError()
+        decrypted_values.append(m)
+
+        if public_key_algorithm in (1, 2, 3, 16):
+            # RSA / ElGamal
             m = decrypted_values[0]
         elif public_key_algorithm in (17, 19):
+            # This was broken when adding ElGamal support. Did it work
+            # before we added ElGamal? Then we should fix this. I doubt
+            # it though, since the sentinel argument was only valid for
+            # the PKCS115_Cipher.
+            raise NotImplementedError()
             m = decrypted_values[1]
 
         symmetric_algorithm = int(m[0])
@@ -188,7 +254,9 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
     def _get_encrypted_key(cls, public_key_algorithm, key_obj,
                            symmetric_algorithm, session_key):
         if public_key_algorithm in (1, 2, 3):
-            cipher = PKCS1_v1_5.new(key_obj)
+            cipher = PKCS115_Cipher(key_obj)
+        elif public_key_algorithm in (16,):
+            cipher = PKCS115_ElGamal_Cipher(key_obj)
         else:
             cipher = key_obj
         encrypted_key = bytearray()
@@ -199,7 +267,8 @@ class PublicKeyEncryptedSessionKeyPacket(Packet):
             checksum >> 8,
             checksum & 0xff
             ]))
-        if public_key_algorithm in (1, 2, 3):
+        if public_key_algorithm in (1, 2, 3, 16):
+            # RSA / ElGamal
             values = cipher.encrypt(session_key)
         else:
             k = Random.random.randint(1, cipher.p - 2)
@@ -932,8 +1001,8 @@ class SecretKeyPacket(PublicKeyPacket):
         if version >= 4:
             cipher = utils.get_symmetric_cipher(
                         symmetric_algorithm, key, utils.CFB, iv)
-            padding = bytearray(
-                [0x00] * (len(encrypted_data) % sym_block_size))
+            padding = bytearray([0x00] * (
+                sym_block_size - (len(encrypted_data) % sym_block_size)))
             decrypted_data = cipher.decrypt(
                 bytes(encrypted_data + padding)
                 )[:-len(padding)]
