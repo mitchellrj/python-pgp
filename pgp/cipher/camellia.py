@@ -17,6 +17,7 @@
 import camcrypt
 from Crypto.Cipher import blockalgo
 
+from pgp.cipher import camcrypt_kwargs
 from pgp.cipher.base import _InternalObj
 
 
@@ -30,7 +31,7 @@ class _CamelliaObj(_InternalObj):
 
     @classmethod
     def _create_impl(cls, key):
-        impl = camcrypt.CamCrypt()
+        impl = camcrypt.CamCrypt(**camcrypt_kwargs)
         impl.keygen(len(key) * 8, bytes(key))
         return impl
 
