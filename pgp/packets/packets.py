@@ -1491,7 +1491,7 @@ class SymmetricallyEncryptedAndIntegrityProtectedDataPacket(Packet):
         return (
             super(self.__class__, self).__eq__(other)
             and self.version == other.version
-            and self.encrypted_data == encrypted_data
+            and self.encrypted_data == other.encrypted_data
             )
 
     @property
@@ -1667,7 +1667,6 @@ def packet_from_packet_data(data, offset=0):
     packet_data = bytearray()
     incomplete = True
     tag = None
-    previous_header_type = None
     while incomplete:
         if not tag:
             tag = data[offset] & 0x3f

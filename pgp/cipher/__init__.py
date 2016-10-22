@@ -30,7 +30,7 @@ except (ImportError, OSError):
 
 
 try:
-    import twofish as _twofish
+    import twofish as _twofish  # noqa
     HAS_TWOFISH = True
 except ImportError:
     HAS_TWOFISH = False

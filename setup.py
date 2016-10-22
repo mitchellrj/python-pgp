@@ -30,6 +30,7 @@ long_description = '\n\n'.join([open(f).read() for f in [
     'CHANGELOG.rst',
     ]])
 requires = [
+    'pgpdump3',  # python3 compatible pgpdump
     'python-magic',
     'pycrypto',
     'six',

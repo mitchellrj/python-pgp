@@ -18,16 +18,14 @@ import abc
 import collections
 import datetime
 import re
+import six
 
 from Crypto import Random
 from Crypto.Hash import SHA
-from zope.interface import implementer
-from zope.interface import provider
 
 from pgp import s2k
 from pgp.packets import constants as C
 from pgp.packets import packets
-from pgp.packets import parsers
 from pgp.signature import BaseSignature
 from pgp import utils
 
@@ -225,7 +223,8 @@ encrypted_message_packet_types = (
     )
 
 
-class EncryptedSessionKey(object, metaclass=abc.ABCMeta):
+@six.add_metaclass(abc.ABCMeta)
+class EncryptedSessionKey(object):
 
     @abc.abstractmethod
     def encrypt(self, passphrase, data):
@@ -283,7 +282,6 @@ class SymmetricSessionKey(object):
             self.encrypted_key = None
         else:
             PacketCls = packets.SymmetricKeyEncryptedSessionKeyPacket
-            skey = self.s2k_specification.to_key(passphrase)
             self.encrypted_key = PacketCls._get_encrypted_key(
                 self.s2k_specification, self.symmetric_algorithm, passphrase,
                 session_key)
@@ -428,7 +426,6 @@ class SymmetricallyEncryptedMessageData(object):
             b'\x00' * block_len
             )
         padding = 0
-        offset = 0
         if not self.integrity_protected:
             padding = block_len - len(message) % block_len
             message = message + b'\x00' * padding
@@ -566,7 +563,6 @@ class EncryptedMessageWrapper(BaseMessage):
     def from_packets(cls, packets):
         session_keys = []
         packet = packets.popleft()
-        messages = []
         if packet.type in encrypted_message_data_packet_types:
             # No session key
             session_keys = [DefaultSessionKey()]

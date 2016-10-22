@@ -20,7 +20,6 @@ import time
 import weakref
 
 from zope.interface import implementer
-from zope.interface import provider
 
 from pgp import interfaces
 from pgp import exceptions
