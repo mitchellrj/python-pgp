@@ -189,7 +189,7 @@ class BaseResource(object):
     def _maybe_create(self, force):
         if not os.path.exists(self.filename):
             if force:
-                self.create_db(self.filename)
+                self.create_db()
             else:
                 raise RuntimeError(
                     'Database {0} does not exist.'.format(self.filename))
