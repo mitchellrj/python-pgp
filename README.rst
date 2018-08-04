@@ -31,7 +31,7 @@ Other Python packages which provide related functionality:
   wrapper around the GnuPG executable.
 * `gpgkeys <https://pypi.python.org/pypi/gpgkeys>`_ - another wrapper
   around the GnuPG executable.
-* `gpglib <https://pypi.python.org/pypi/gpglib>`_ - a pure python
+* `gpglib2 <https://pypi.python.org/pypi/gpglib2>`_ - a pure python
   library for parsing OpenPGP packets and decrypting messages.
 * `OpenPGP <https://pypi.python.org/pypi/OpenPGP>`_ - an unmaintained
   pure python library with much of the functionality of old versions
