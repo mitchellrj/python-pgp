@@ -65,20 +65,20 @@ Installation
 ------------
 ::
 
-    pip install pgp
+    pip install py-pgp
 
 with Twofish support::
 
-    pip install pgp[twofish]
+    pip install py-pgp[twofish]
 
 with Camellia support::
 
-    pip install pgp[camellia]
+    pip install py-pgp[camellia]
 
 
 with Twofish & Camellia support::
 
-    pip install pgp[camellia,twofish]
+    pip install py-pgp[camellia,twofish]
 
 Usage
 -----
